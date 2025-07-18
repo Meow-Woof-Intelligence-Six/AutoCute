@@ -1,3 +1,15 @@
 [submodule "third_parties/thundersvm"]
 	path = third_parties/thundersvm
 	url = https://github.com/Xtra-Computing/thundersvm.git
+[submodule "third_parties/tabpfn-extensions"]
+	path = third_parties/tabpfn-extensions
+	url = https://github.com/PriorLabs/tabpfn-extensions.git
+[submodule "third_parties/TabPFN"]
+	path = third_parties/TabPFN
+	url = https://github.com/PriorLabs/TabPFN.git
+[submodule "third_parties/qlib"]
+	path = third_parties/qlib
+	url = https://github.com/microsoft/qlib.git
+[submodule "third_parties/wnb"]
+	path = third_parties/wnb
+	url = https://github.com/msamsami/wnb.git
