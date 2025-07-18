@@ -17,7 +17,7 @@ column_mapping = {
         "振幅": "Amplitude",
         "涨跌额": "PriceChange",
         "换手率": "TurnoverRate",
-        "涨跌幅": "PriceChangePercentage",
+        "涨跌幅": "PriceChangePercentage", # 百分比
     }
 
 df = pd.read_csv(csv_path, header=0, sep=",", encoding="utf-8")
