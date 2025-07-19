@@ -25,7 +25,18 @@ df.rename(columns=column_mapping, inplace=True)
 
 df['factor'] = 1.0  # 添加 赋权，当做没有，初始值为1.0
 len(df)  # 查看数据量
+
+
+df['vwap'] = df['Turnover'] / df['volume']  # 计算 VWAP
+
 # 637229；有些股票中间才出现。
+#%%
+# TODO 复权价格问题
+# df['close'].describe()
+# bad = df[df['close'] <= 0]
+# bad[['symbol', 'date', 'close']]
+# df = df[(df['收盘'] <= 0) | (df['开盘'] <= 0) | (df['最高'] <= 0) & (df['最低'] <= 0)]
+
 #%%
 # 转换日期格式
 df['date'] = pd.to_datetime(df['date'])
