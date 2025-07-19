@@ -43,6 +43,18 @@ df158 = df158.merge(all_stock_info_df,
                     how='left')              # 以 df158 为主表
 df158
 #%%
+# 上市了多久更有意义
+import pandas as pd
+from feature_engine.datetime import DatetimeSubtraction
+dtf = DatetimeSubtraction(
+    variables="timestamp",
+    reference="ListingDate",
+    output_unit="Y")
+
+df158 = dtf.fit_transform(df158)
+df158 = df158.drop(columns=["ListingDate"])  # 删除上市时间列
+df158
+#%%
 df158.to_pickle(project_dir / "temp/qlib_alpha158_ranked_with_stock_info.pkl")
 
 # %%
