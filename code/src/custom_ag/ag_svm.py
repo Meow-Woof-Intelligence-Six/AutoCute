@@ -212,7 +212,7 @@ class AgSVMModel(AbstractModel):
             "shrinking": True,  # 启用收缩启发式
             "tol": 1e-3,  # 收敛容忍度
             "degree": 3,  # 多项式核函数的度数
-            "random_state": 0,
+            # "random_state": 0,
             "probability": True,  # 启用概率预测用于集成
         }
         if self.regression_or_classification:
