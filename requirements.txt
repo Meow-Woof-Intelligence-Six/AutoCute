@@ -7,8 +7,13 @@ pandas
 # pyqlib
 # pyqlib==0.9.6
 -e ./third_parties/qlib
+-e ./third_parties/TabPFN
+-e ./third_parties/tabpfn-extensions
+-e ./third_parties/wnb
 # autogluon
 autogluon==1.3.1
+imodels
+flash-attn
 
 feature-engine
 # 特殊安装
@@ -21,5 +26,6 @@ feature-engine
 akshare
 ydata-profiling
 dtreeviz
+missingno
 # 自动
 # -r requirements-freeze.txt
