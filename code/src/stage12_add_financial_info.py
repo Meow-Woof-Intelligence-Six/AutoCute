@@ -99,6 +99,7 @@ def fill_financial_complete_date(df, start_date='2015-04-20', end_date='2025-04-
     
     # 4. 按 item_id 分组，补齐完整日期区间并填充缺失值
     def fill_group(g):
+
         full_dates = pd.date_range(start=start_date, end=end_date, freq='D')
         g = g.set_index('timestamp').sort_index()
         g = g.reindex(full_dates)
@@ -118,22 +119,15 @@ def fill_financial_complete_date(df, start_date='2015-04-20', end_date='2025-04-
         for missing_date in missing_dates:
             diffs = known_dates - missing_date
             left_dates = known_dates[diffs < pd.Timedelta(0)]
-            right_dates = known_dates[diffs > pd.Timedelta(0)]
+            right_dates = known_dates[diffs >= pd.Timedelta(0)]
             
             if len(left_dates) == 0 and len(right_dates) > 0:
-                nearest_date = right_dates.min()
-            elif len(right_dates) == 0 and len(left_dates) > 0:
+                # nearest_date = right_dates.min()
+                continue  # 没有左侧日期，跳过填充
+            else: 
                 nearest_date = left_dates.max()
-            else:
-                left_diff = missing_date - left_dates.max()
-                right_diff = right_dates.min() - missing_date
-                nearest_date = left_dates.max() if left_diff <= right_diff else right_dates.min()
-            
             g.loc[missing_date, fill_cols] = g.loc[nearest_date, fill_cols]
-            # 确保非空关键列
-            for col in ['item_id', '股票简称', '所处行业']:
-                if col in g.columns:
-                    g.loc[missing_date, col] = g.loc[nearest_date, col]
+
         
         g = g.reset_index().rename(columns={'index': 'timestamp'})
         # 转回字符串格式方便后续使用
@@ -147,11 +141,10 @@ def fill_financial_complete_date(df, start_date='2015-04-20', end_date='2025-04-
 df_financial_filled = fill_financial_complete_date(df_financial)
 
 # %%
-df_financial_filled['timestamp'] = pd.to_datetime(df_financial_filled['timestamp'], format='%Y%m%d', errors='coerce')
-print(df_financial_filled['timestamp'].dtype)
-print(df_financial_filled['timestamp'].head())
+# df_financial_filled['timestamp'] = pd.to_datetime(df_financial_filled['timestamp'], format='%Y%m%d', errors='coerce')
 
 df_financial_filled
+df_financial_filled.to_csv("AutoCute/temp/stage1/df_financial_filled.csv", index=False, encoding="utf-8-sig")
 # %%
 import pandas as pd
 
@@ -183,15 +176,24 @@ def fill_df158_with_dates(df, start_date='2015-04-20', end_date='2025-04-25'):
 
 # 用法示例：
 df158_filled = fill_df158_with_dates(df158)
+df158_filled.to_csv("AutoCute/temp/stage1/df158_filled.csv", index=False, encoding="utf-8-sig")
 
 #%%
 df158_filled
 # print(df158_filled['timestamp'].dtype)
 #%%
-# df158_filled['item_id'] = df158_filled['item_id'].astype(str)
+
+df_financial_filled = df_financial
+
+df158_filled['item_id'] = df158_filled['item_id'].astype(int)
+df_financial_filled['item_id'] = df_financial_filled['item_id'].astype(int)
+df158_filled['timestamp'] = pd.to_datetime(df158_filled['timestamp'], format='%Y%m%d', errors='coerce')
+df_financial_filled['timestamp'] = pd.to_datetime(df_financial_filled['timestamp'], format='%Y%m%d', errors='coerce')
+
+
 # df_financial_filled['item_id'] = df_financial_filled['item_id'].astype(str)
 # 去除字符串中的 .0（只去掉末尾 .0 的情况，防止误删小数部分）
-df158_filled['item_id'] = df158_filled['item_id'].str.replace(r'\.0$', '', regex=True)
+# df158_filled['item_id'] = df158_filled['item_id'].str.replace(r'\.0$', '', regex=True)
 
 df_merged1 = pd.merge(
     df158_filled,
@@ -208,28 +210,29 @@ cols_to_check = df_merged1.columns[2:50]
 
 
 # 删除这些列中全为 NA 的行
-df_merged1 = df_merged1[~df_merged1[cols_to_check].isna().all(axis=1)].copy()
+# df_merged1 = df_merged1[~df_merged1[cols_to_check].isna().all(axis=1)].copy()
 
-cols_to_drop = [
-    '资产-货币资金',
-    '资产-应收账款',
-    '资产-存货',
-    '负债-应付账款',
-    '负债-预收账款',
-    '销售毛利率',
-    '营业总支出-营业支出',
-    '营业总支出-销售费用',
-    '营业总支出-财务费用'
-]
+# cols_to_drop = [
+#     '资产-货币资金',
+#     '资产-应收账款',
+#     '资产-存货',
+#     '负债-应付账款',
+#     '负债-预收账款',
+#     '销售毛利率',
+#     '营业总支出-营业支出',
+#     '营业总支出-销售费用',
+#     '营业总支出-财务费用'
+# ]
 
 # 删除这些列（若列存在再删除，避免报错）
-df_merged1 = df_merged1.drop(columns=[col for col in cols_to_drop if col in df_merged1.columns])
+# df_merged1 = df_merged1.drop(columns=[col for col in cols_to_drop if col in df_merged1.columns])
 
 
 #%%
 df_merged1.to_pickle(project_dir / "temp/qlib_alpha158_ranked_with_stock_finance_info.pkl")
 
 
+df_merged1.to_csv("AutoCute/temp/stage1/df_merged1.csv", index=False, encoding="utf-8-sig")
 
 
 

@@ -92,7 +92,7 @@ for df_ in [train_df, valid_df, test_df]:
 final_cols = features_to_use + [TARGET_LABEL]
 train_data_full = train_df[final_cols].dropna(subset=[TARGET_LABEL])
 valid_data_full = valid_df[final_cols].dropna(subset=[TARGET_LABEL])
-test_data = test_df[features_to_use] 
+test_data = test_df[final_cols] 
 
 print(f"总训练数据: {len(train_data_full)}, 总验证数据: {len(valid_data_full)}, 总测试数据: {len(test_data)}")
 
@@ -153,14 +153,23 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
 
     initial_models = {
                     #   AgSVMModel: {},
-                      LinearModel: {},
+                    #   LinearModel: {},
                       TabPFNModel: {},
+                      
                       **autogluon_models, 
                     #   **hyperparameter_config_dict['zeroshot_hpo_hybrid'], 
         } 
-    fitted_models = ["GBM", "RF", "KNN", "CAT", "XT", "FASTAI", "TABPFNMIX", "XGB", "NN_TORCH"]
+    fitted_models = ["GBM", "RF", "KNN", "CAT", "XT", "FASTAI", "TABPFNMIX", "XGB", "NN_TORCH",
+                      "IM_RULEFIT", 
+                      "IM_FIGS", 
+                     ]
     # KNN < GBM < RF
     # predictor = TabularPredictor.load("/home/ye_canming/repos/novelties/ts/comp/AutoCute/models/stage4/cv_fold_5/phase1_explore")
+    # Fitting model: LinearModel ...
+        # 0.17     = Validation score   (spearmanr)
+        # 20.81s   = Training   runtime
+    # 
+    #  0.1569   = Validation score   (spearmanr)
     # Fitting model: CatBoost ...
     #         0.2256   = Validation score   (spearmanr)
     # Fitting model: ExtraTrees ...
@@ -178,9 +187,15 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
     for model_name in fitted_models:
         del initial_models[model_name] 
     
-    predictor_explore = TabularPredictor(label=TARGET_LABEL, problem_type=REGRESSION, eval_metric=EVAL_METRIC, path=model_path / "phase1_explore")
-    predictor_explore.fit(train_data=train_data, tuning_data=valid_data, hyperparameters=initial_models, 
-                          num_gpus=1
+    predictor_explore = TabularPredictor(label=TARGET_LABEL,
+                                          problem_type=REGRESSION,
+                                            eval_metric=EVAL_METRIC,
+                                              path=model_path / "phase1_explore")
+    predictor_explore.fit(train_data=train_data, 
+                          tuning_data=valid_data,
+                            hyperparameters=initial_models, 
+                            raise_on_no_models_fitted = True
+                        #   num_gpus=1
                         #   time_limit=600
                           ) # 缩短时间以加速
     leaderboard_explore = predictor_explore.leaderboard(valid_data)

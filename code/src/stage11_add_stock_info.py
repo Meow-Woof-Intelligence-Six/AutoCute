@@ -10,6 +10,12 @@ all_stock_info_df = all_stock_info_df.convert_dtypes()
 all_stock_info_df
 
 #%%
+should_not_use = [
+    "最新", # 泄露未来信息
+    "总市值", # 当前股价决定，泄露了当前股价
+    "流通市值",
+    "prompt"
+]
 all_stock_info_df = all_stock_info_df.rename(columns={
     "股票代码": "item_id",
     "股票简称": "Name",
@@ -22,14 +28,16 @@ all_stock_info_df = all_stock_info_df.rename(columns={
 all_stock_info_df['item_id'] = all_stock_info_df['item_id'].astype(int)
 # 
 all_stock_info_df = all_stock_info_df.set_index('item_id')
+all_stock_info_df
+#%%
+all_stock_info_df.to_pickle(project_dir / "temp/all_stock_info_df_cleaned.pkl")
 
 #%%
-should_not_use = [
-    "最新", # 泄露未来信息
-    "总市值", # 当前股价决定，泄露了当前股价
-    "流通市值",
-    "prompt"
-]
+
+
+
+
+
 # %%
 df158 = pd.read_pickle(project_dir / "temp/qlib_alpha158_ranked.pkl")
 df360 = pd.read_pickle(project_dir / "temp/qlib_alpha360_ranked.pkl")

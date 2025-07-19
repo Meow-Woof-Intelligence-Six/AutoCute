@@ -37,7 +37,7 @@ class AgSVMModel(AbstractModel):
         
         self.use_thunder_svm = False
         # 数据量阈值，超过此值将使用 tail 进行训练
-        self.subsample_threshold = 20000
+        self.subsample_threshold = 10000
 
     def _get_feature_types(self, X: pd.DataFrame):
         """
@@ -55,10 +55,16 @@ class AgSVMModel(AbstractModel):
         self._numeric_features = []
         skew_threshold = self.params.get("proc.skew_threshold", 0.99)
         for feature in continuous_features:
-            if np.abs(X[feature].skew()) > skew_threshold:
-                self._skewed_features.append(feature)
+            # 确保特征存在且为数值类型才能计算偏度
+            if feature in X.columns and pd.api.types.is_numeric_dtype(X[feature]):
+                if np.abs(X[feature].skew()) > skew_threshold:
+                    self._skewed_features.append(feature)
+                else:
+                    self._numeric_features.append(feature)
             else:
+                # 如果不是数值类型，则放入普通数值特征列表进行基本处理
                 self._numeric_features.append(feature)
+
 
     def _preprocess(self, X: pd.DataFrame, is_train=False, **kwargs) -> np.ndarray:
         """
@@ -147,6 +153,7 @@ class AgSVMModel(AbstractModel):
         if num_gpus > 0:
             try:
                 from thundersvm import SVC, SVR
+                # from thundersvm import SVC # SVR 不稳定，先不用
                 print("Using ThunderSVM for GPU acceleration.")
                 self.use_thunder_svm = True
             except ImportError:
@@ -171,56 +178,51 @@ class AgSVMModel(AbstractModel):
         self.model.fit(X_processed, y)
 
     def save(self, path: str | None = None, verbose: bool = True) -> str:
-        # 修正：对于非 ThunderSVM 模型，直接使用父类的 save 方法，它会正确地 pickle 整个对象（包括预处理器）
-        if not self.use_thunder_svm:
-            return super().save(path=path, verbose=verbose)
-
-        # ThunderSVM 的保存逻辑
+        # 修正：采用更健壮的保存逻辑
         if path is None:
             path = self.path
-        Path(path).mkdir(parents=True, exist_ok=True)
         
-        # 保存 thundersvm 模型文件
-        real_model_path = os.path.join(path, "thundersvm.model")
-        if verbose:
-            print(f"Saving ThunderSVM model to {real_model_path}")
-        self.model.save_to_file(real_model_path)
-        
-        # 保存 AutoGluon 的模型框架 (不包含实际模型)
+        # 如果是 ThunderSVM，则先保存其原生模型文件
+        if self.use_thunder_svm:
+            real_model_path = os.path.join(path, "thundersvm.model")
+            if verbose:
+                print(f"Saving ThunderSVM model to {real_model_path}")
+            self.model.save_to_file(real_model_path)
+
+        # 临时将不可序列化的模型置为 None
         _model = self.model
         self.model = None
-        save_pkl.save(path=os.path.join(path, self.model_file_name), object=self, verbose=verbose)
+        # 调用父类的 save 方法来安全地保存 Python 对象
+        save_path = super().save(path=path, verbose=verbose)
+        # 恢复模型
         self.model = _model
         
-        return path
+        return save_path
 
     @classmethod
     def load(cls, path: str, reset_paths: bool = True, verbose: bool = True):
-        # 修正：对于非 ThunderSVM 模型，直接使用父类的 load 方法
-        # 我们通过检查 thundersvm.model 文件是否存在来判断模型类型
-        real_model_path = os.path.join(path, "thundersvm.model")
-        if not os.path.exists(real_model_path):
-            return super().load(path=path, reset_paths=reset_paths, verbose=verbose)
-
-        # ThunderSVM 的加载逻辑
-        model = load_pkl.load(path=os.path.join(path, cls.model_file_name), verbose=verbose)
-        if reset_paths:
-            model.set_contexts(path)
-
-        from thundersvm import SVC, SVR
-        is_regression = model.problem_type in ["regression", "softclass"]
-        model_cls = SVR if is_regression else SVC
+        # 修正：采用更健壮的加载逻辑
+        # 首先加载 Python 对象
+        model = super().load(path=path, reset_paths=reset_paths, verbose=verbose)
         
-        params = model._get_model_params()
-        # 加载时不需要概率，可以加速
-        params['probability'] = False
-        
-        model_params = {k: v for k, v in params.items() if k != 'proc.skew_threshold'}
-        model.model = model_cls(**model_params)
-        
-        if verbose:
-            print(f"Loading ThunderSVM model from {real_model_path}")
-        model.model.load_from_file(real_model_path)
+        # 如果是 ThunderSVM，则加载其原生模型文件
+        if model.use_thunder_svm:
+            from thundersvm import SVC, SVR
+            is_regression = model.problem_type in ["regression", "softclass"]
+            model_cls = SVR if is_regression else SVC
+            
+            # 获取参数以重新实例化一个空模型
+            params = model._get_model_params()
+            # params['probability'] = False # 加载时不需要概率
+            model_params = {k: v for k, v in params.items() if k != 'proc.skew_threshold'}
+            
+            # 实例化空模型并从文件加载权重
+            model.model = model_cls(**model_params)
+            real_model_path = os.path.join(path, "thundersvm.model")
+            if verbose:
+                print(f"Loading ThunderSVM model from {real_model_path}")
+            model.model.load_from_file(real_model_path)
+            
         return model
 
     def _set_default_params(self):
@@ -230,15 +232,16 @@ class AgSVMModel(AbstractModel):
             "gamma": "scale",
             "shrinking": True,
             "tol": 1e-3,
-            "probability": True,
-            "random_state": 0,
+            # "random_state": 0,
             "proc.skew_threshold": 0.99, # 偏态数据处理阈值
+            "cache_size": 128, # 添加缓存大小以控制内存使用
         }
         is_regression = self.problem_type in ["regression", "softclass"]
         if is_regression:
             default_params["epsilon"] = 0.1
         else:
             default_params["class_weight"] = "balanced"
+            default_params["probability"] = True  # 启用概率估计
         
         for param, val in default_params.items():
             self._set_default_param_value(param, val)

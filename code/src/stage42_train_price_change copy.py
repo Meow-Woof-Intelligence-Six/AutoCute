@@ -31,7 +31,7 @@ print("--- [1/5] 加载配置 ---")
 
 # 定义目标标签
 # 我们假设'涨跌幅排名_shift'是已经正态分布化的回归目标
-TARGET_LABEL = '涨跌幅排名_shift' 
+TARGET_LABEL = '涨跌_shift' 
 
 # 相信用户的专业性，假设路径存在
 from auto_config import project_dir

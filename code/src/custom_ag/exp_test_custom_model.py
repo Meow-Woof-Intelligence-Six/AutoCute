@@ -59,12 +59,13 @@ from ag_tabpfn import TabPFNModel
 from ag_linear import IntelligentLinearModel
 from ag_nb import IntelligentNaiveBayesModel
 from autogluon.tabular.models.lr.lr_model import LinearModel
-#%%
+# %%
 # from autogluon.tabular.models.tabpfn.tabpfn_model import TabPFNModel 
 # 配置包含SVM的超参数
 hyperparameters = {
     # AgSVMModel: [
-    #     # {}, 
+    #     {}, 
+    # ],
     #     {
     #         'gamma': 'auto',
     #     }, 
@@ -81,15 +82,18 @@ hyperparameters = {
     #         'gamma': 'auto',
     #     }
     # ],
-    # TabPFNModel: {},
+    TabPFNModel: {},
     # IntelligentLinearModel:{},
     # LinearModel:{} # 0.9619
-    IntelligentNaiveBayesModel: {},
+    # IntelligentNaiveBayesModel: {},
     # AssertionError: Max allowed features for the model is 100
 }
 
 # 初始化预测器
-predictor = TabularPredictor(label=label, eval_metric="roc_auc").fit(
+predictor = TabularPredictor(label=label, 
+                            #  eval_metric="roc_auc", 
+                             problem_type="regression"
+                             ).fit(
     # train_data=train_data,
     # tuning_data=test_data,
     train_data=train_data_recent,
@@ -110,4 +114,43 @@ predictor = TabularPredictor(label=label, eval_metric="roc_auc").fit(
 #%%
 leaderboard = predictor.leaderboard()
 leaderboard
+# %%
+# svr 官方实例
+import numpy as np
+from sklearn.datasets import make_regression
+from thundersvm import SVR
+
+print("--- 开始 ThunderSVM SVR 最小化测试 ---")
+#%%
+try:
+    # 1. 生成一份干净的、符合要求的回归数据
+    #    使用 float32 类型，这在 GPU 计算中更常见
+    print("正在生成 make_regression 数据 (10000 样本, 100 特征)...")
+    X, y = make_regression(
+        n_samples=10000, 
+        n_features=100, 
+        noise=0.1, 
+        random_state=42
+    )
+    X = X.astype(np.float32)
+    y = y.astype(np.float32)
+    print("数据生成完毕。")
+
+    # 2. 实例化 SVR 模型
+    #    使用默认参数，包括默认的 cache_size
+    print("正在实例化 thundersvm.SVR()...")
+    clf = SVR(verbose=True)
+    print("实例化成功。")
+
+    # 3. 拟合模型
+    print("正在调用 clf.fit(X, y)...")
+    clf.fit(X, y)
+    print("\n--- ✅ 测试成功 ---")
+    print("thundersvm.SVR 在标准数据集上成功完成了拟合。")
+
+except Exception as e:
+    print("\n--- ❌ 测试失败 ---")
+    print("在测试过程中捕获到异常:")
+    print(f"异常类型: {type(e).__name__}")
+    print(f"异常信息: {e}")
 # %%
