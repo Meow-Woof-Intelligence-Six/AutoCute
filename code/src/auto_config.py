@@ -12,7 +12,8 @@ qlib_dir = project_dir/"temp/qlib_data"
 
 train_csv_path = project_dir/"data/train.csv"
 valid_csv_path = project_dir/"data/test.csv"
-test_length = 3
+
+
 #%%
 # 自动决定 train valid, test 分区
 import pandas as pd
@@ -23,22 +24,42 @@ memory = Memory(location=project_dir / "joblib_cache", verbose=0)
 
 today = pd.to_datetime("today").strftime('%Y-%m-%d')
 
+# --- 可配置参数 ---
+# 定义验证集的天数
+VALID_DAYS = 5
+
 @memory.cache
-def get_train_valid_test_dates(today):
-    train_df = pd.read_csv(train_csv_path, header=0, sep=",", encoding="utf-8")
-    valid_df = pd.read_csv(valid_csv_path, header=0, sep=",", encoding="utf-8")
-    train = (train_df['日期'].min(), train_df['日期'].max())
+def get_train_valid_test_dates(today=today,):
+    """
+    根据官方数据文件，智能推导训练、验证和测试集的日期范围。
+    核心逻辑：将官方数据的最后一天作为测试集，并依此向前推导。
+    """
+    print("正在重新计算训练/验证/测试集的日期范围...")
     
-    valid_start = max(pd.to_datetime(train[1]) + pd.Timedelta(days=1), pd.to_datetime(valid_df['日期'].min())).strftime('%Y-%m-%d')
-    valid = (valid_start, valid_df['日期'].max())
-
-    test_start = pd.to_datetime(valid[1]) + pd.Timedelta(days=1)
-    test_end = test_start + pd.Timedelta(days=test_length - 1)
-
-    test = (test_start.strftime('%Y-%m-%d'), test_end.strftime('%Y-%m-%d'))
-
+    # 1. 合并数据源以获取完整日期序列
+    train_df_raw = pd.read_csv(train_csv_path, usecols=['日期'], encoding="utf-8")
+    valid_df_raw = pd.read_csv(valid_csv_path, usecols=['日期'], encoding="utf-8")
+    all_dates_df = pd.concat([train_df_raw, valid_df_raw]).drop_duplicates()
+    all_dates_df['日期'] = pd.to_datetime(all_dates_df['日期'])
+    
+    # 2. 确定测试集
+    test_date = all_dates_df['日期'].max()
+    test = (test_date.strftime('%Y-%m-%d'), test_date.strftime('%Y-%m-%d'))
+    
+    # 3. 确定验证集
+    valid_end_date = test_date - pd.Timedelta(days=1)
+    valid_start_date = valid_end_date - pd.Timedelta(days=VALID_DAYS - 1)
+    valid = (valid_start_date.strftime('%Y-%m-%d'), valid_end_date.strftime('%Y-%m-%d'))
+    
+    # 4. 确定训练集
+    train_end_date = valid_start_date - pd.Timedelta(days=1)
+    train_start_date = all_dates_df['日期'].min()
+    train = (train_start_date.strftime('%Y-%m-%d'), train_end_date.strftime('%Y-%m-%d'))
+    
+    print(f"日期范围计算完成: Train={train}, Valid={valid}, Test={test}")
     return train, valid, test
 
+# 调用函数
 train_dates, valid_dates, test_dates = get_train_valid_test_dates(today=today)
 train_dates, valid_dates, test_dates
 # 左右包含

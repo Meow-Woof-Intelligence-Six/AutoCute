@@ -202,6 +202,28 @@ df_merged1 = pd.merge(
 )
 
 df_merged1
+#%%
+# 获取前 3-50 列（注意 Python 索引从 0 开始，对应位置为 2:50）
+cols_to_check = df_merged1.columns[2:50]
+
+
+# 删除这些列中全为 NA 的行
+df_merged1 = df_merged1[~df_merged1[cols_to_check].isna().all(axis=1)].copy()
+
+cols_to_drop = [
+    '资产-货币资金',
+    '资产-应收账款',
+    '资产-存货',
+    '负债-应付账款',
+    '负债-预收账款',
+    '销售毛利率',
+    '营业总支出-营业支出',
+    '营业总支出-销售费用',
+    '营业总支出-财务费用'
+]
+
+# 删除这些列（若列存在再删除，避免报错）
+df_merged1 = df_merged1.drop(columns=[col for col in cols_to_drop if col in df_merged1.columns])
 
 
 #%%
