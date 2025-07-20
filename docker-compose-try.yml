@@ -6,7 +6,11 @@ services:
       - ./output:/app/output
       - ./temp:/app/temp
     working_dir: /app
-    command: /bin/bash /app/data/run.sh
+    ports:
+      - "8889:8888"
+    environment:
+      - JUPYTER_WORKSPACE_NAME=app
+    command: ["jupyter", "lab", "--ip=0.0.0.0", "--allow-root", "--no-browser", "--port=8888"]
     # command: tail -f /dev/null
     tty: false # 确保容器在命令结束后退出
     stdin_open: false # 不保持容器的标准输入打开

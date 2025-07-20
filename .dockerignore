@@ -6,6 +6,9 @@ temp
 AutogluonModels
 data
 joblib_cache
+
+!third_parties
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

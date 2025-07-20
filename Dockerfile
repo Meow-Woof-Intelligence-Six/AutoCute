@@ -1,28 +1,38 @@
 # 1. 选择合适的基础镜像
-FROM python:3.10-slim
+FROM autogluon/autogluon:1.3.1-cuda12.4-jupyter-ubuntu22.04-py3.11
 
 # 2. 设置工作目录
 WORKDIR /app
 
-# 3. 将本地的 requirements.txt 文件复制到容器中
+# 3. 复制文件到容器
 COPY requirements.txt /app/
-
-COPY ./third_parties/ /app/third_parties/
-
+COPY third_parties/ /app/third_parties/
 
 # 4. 安装 Python 依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+# RUN pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+
 
 # thundersvm
 # cmake -DCMAKE_C_COMPILER=gcc-11 -DCMAKE_CXX_COMPILER=g++-11 ..
 # cd ../python
 # python setup.py install
+# sudo apt-get install libnuma-dev
+
+# 安装 flash-attn
 
 
-
-# 5. 将当前目录下所有文件复制到容器的工作目录
 COPY ./code/ /app/code/
 COPY ./model/ /app/model/
 COPY ./init.sh /app/init.sh
 COPY ./train.sh /app/train.sh
 COPY ./test.sh /app/test.sh
+# COPY ./readme.pdf /app/readme.pdf
+
+EXPOSE 8888
+ENV JUPYTER_WORKSPACE_NAME=app
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--allow-root", "--no-browser", "--port=8888"]
+# CMD ["ipython"]
+

@@ -7,25 +7,30 @@ pandas
 # pyqlib
 # pyqlib==0.9.6
 -e ./third_parties/qlib
+# tabpfn
 -e ./third_parties/TabPFN
 -e ./third_parties/tabpfn-extensions
 -e ./third_parties/wnb
+
+
+# 版本控制
+numpy==2.1.3
+
 # autogluon
-autogluon==1.3.1
+# autogluon==1.3.1
 imodels
-flash-attn
 
 feature-engine
+
+tf-keras
+
 # 特殊安装
 # thundersvm
-# tabpfn
+flash-attn
+# ./third_parties/flash_attn-2.8.0.post2+cu12torch2.6cxx11abiTRUE-cp310-cp310-linux_x86_64.whl
 
 
-# 数据分析
-# dev 阶段
-akshare
-ydata-profiling
-dtreeviz
-missingno
+
+
 # 自动
 # -r requirements-freeze.txt
