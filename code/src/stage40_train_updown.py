@@ -16,6 +16,8 @@ from stage31_get_vetted_data import MODEL_OUTPUT_BASE_PATH
     vetted_features,
     features_to_use,
     final_cols,
+    test_df,  # 包含 'item_id' 和 'timestamp'
+    test1_df,  # 包含 'item_id' 和 'timestamp'
 ) = get_train_valid_test_data(
     TARGET_LABEL=TARGET_LABEL,
 )
@@ -199,12 +201,12 @@ predictor_explore.fit(
 
 
 # %% --- 5. 定义预测和保存结果的函数 ---
-def predict_and_save_results(predictor, test_data, output_prefix):
+def predict_and_save_results(predictor, test_data, test_df, output_prefix, save_importance=False):
     # 1. 预测概率
     pred_proba = predictor.predict_proba(test_data)
 
-    # 2. 取出 test_data 的前两列
-    left_cols = test_data.iloc[:, :2]  # 前两列
+    # 2. 取出 test_df 的前两列
+    left_cols = test_df.iloc[:, :2]  # 前两列
 
     # 3. 与 pred_proba 合并
     pred_proba_result = pd.concat([left_cols, pred_proba], axis=1)
@@ -217,17 +219,18 @@ def predict_and_save_results(predictor, test_data, output_prefix):
     )
 
     # 5. 保存特征重要性
-    feature_importance = predictor.feature_importance(valid_data_full)
-    feature_importance.to_csv(
-        project_dir / f"temp/stage4/{output_prefix}_feature_importance.csv",
-        index=True,  # 保留“特征名”作为第一列
-        header=True,  # 保留列名
-        encoding="utf-8",
-    )
+    if save_importance:
+        feature_importance = predictor.feature_importance(valid_data_full)
+        feature_importance.to_csv(
+            project_dir / f"temp/stage4/{output_prefix}_feature_importance.csv",
+            index=True,  # 保留“特征名”作为第一列
+            header=True,  # 保留列名
+            encoding="utf-8",
+        )
 
 
 # %% --- 6. 第一次运行：使用 test1_data ---
-predict_and_save_results(predictor_explore, test1_data, "updown_test1")
+predict_and_save_results(predictor_explore, test1_data, test1_df, "updown_test1")
 
 # %% --- 7. 第二次运行：使用 test_data ---
-predict_and_save_results(predictor_explore, test_data, "updown_test")
+predict_and_save_results(predictor_explore, test_data, test_df, "updown_test")
