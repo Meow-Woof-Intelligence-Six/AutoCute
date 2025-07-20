@@ -5,8 +5,8 @@ os.environ['OPENBLAS_NUM_THREADS'] = '64'
 os.environ['GOTO_NUM_THREADS'] = '64'
 os.environ['OMP_NUM_THREADS'] = '64'
 
-from auto_config import project_dir
-os.environ["TABPFN_MODEL_CACHE_DIR"] = (project_dir/"data/pretrained").as_posix()
+from auto_config import project_dir, pretrained_dir
+os.environ["TABPFN_MODEL_CACHE_DIR"] = pretrained_dir.as_posix()
 print(f"设置 TABPFN_MODEL_CACHE_DIR 为: {os.environ['TABPFN_MODEL_CACHE_DIR']}")
 
 import pandas as pd
@@ -60,13 +60,21 @@ def get_train_valid_test_data(
     test_data = test_df[final_cols] 
     test1_data = test1_df[final_cols] 
     print(f"总训练数据: {len(train_data_full)}, 总验证数据: {len(valid_data_full)}, 总测试数据: {len(test_data)}, 总测试1数据: {len(test1_data)}")
-    return train_data_full, valid_data_full, test_data, test1_data, vetted_features, features_to_use, final_cols
+    return train_data_full, valid_data_full, test_data, test1_data, vetted_features, features_to_use, final_cols, test_df, test1_df
 
 from custom_ag.ag_svm import AgSVMModel
 from custom_ag.ag_nb import IntelligentNaiveBayesModel
 from custom_ag.ag_tabpfn import TabPFNV2Model
 from autogluon.tabular.models.lr.lr_model import LinearModel
 from autogluon.tabular.models.tabpfnmix.tabpfnmix_model import TabPFNMixModel
+
+from autogluon.tabular.configs.hyperparameter_configs import hyperparameter_config_dict
+autogluon_models = {}
+for k, v in hyperparameter_config_dict.items():
+    for kk, vv in v.items():
+        if kk!="AG_AUTOMM":
+            autogluon_models[kk] = {}
+# autogluon_models
 
 MODEL_OUTPUT_BASE_PATH = project_dir / "model/stage4"
 MODEL_OUTPUT_BASE_PATH.mkdir(parents=True, exist_ok=True)

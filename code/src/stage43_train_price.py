@@ -1,172 +1,208 @@
-#%%
-# stage42_train_price_change.py
-# 目标：使用AutoGluon，结合自定义模型和HPO，训练一个预测涨跌幅排名的回归模型。
-# 假设：stage30已成功运行，生成了train.pkl, valid.pkl, test.pkl
-
-import os
-# [修复] 解决OpenBLAS多线程导致的段错误 (Segmentation Fault)
-os.environ['OPENBLAS_NUM_THREADS'] = '64'
-os.environ['GOTO_NUM_THREADS'] = '64'
-os.environ['OMP_NUM_THREADS'] = '64'
-
-from auto_config import project_dir
-os.environ["TABPFN_MODEL_CACHE_DIR"] = (project_dir/"data/pretrained").as_posix()
-print(f"设置 TABPFN_MODEL_CACHE_DIR 为: {os.environ['TABPFN_MODEL_CACHE_DIR']}")
-
-import pandas as pd
-import numpy as np
-import json
-from pathlib import Path
-import warnings
-from autogluon.tabular import TabularDataset, TabularPredictor
-from autogluon.core.constants import REGRESSION
-from sklearn.model_selection import TimeSeriesSplit
-
-warnings.filterwarnings('ignore')
-
-#%%
-# --- 1. 配置与环境准备 ---
-print("--- [1/6] 加载配置 ---")
-
-# [新增] 运行模式选择: 'QUICK_CV' 或 'FULL_TRAIN'
-RUN_MODE = 'QUICK_CV' 
-# RUN_MODE = 'FULL_TRAIN' 
-CV_FOLDS = 5
-
+# %%
 # 定义目标标签
-TARGET_LABEL = '收盘_shift' 
-EVAL_METRIC = 'symmetric_mean_absolute_percentage_error'
-
-# 路径配置
-FEATURE_JSON_PATH = project_dir / "temp/stage2/feature_selection_results_vetted.json"
-TRAIN_DATA_PATH = project_dir / "temp/stage3/train.pkl"
-VALID_DATA_PATH = project_dir / "temp/stage3/valid.pkl"
-TEST_DATA_PATH = project_dir / "temp/stage3/test.pkl"
-MODEL_OUTPUT_BASE_PATH = project_dir / "models/stage4"
-MODEL_OUTPUT_BASE_PATH.mkdir(parents=True, exist_ok=True)
-
-# 加载特征选择JSON
-with open(FEATURE_JSON_PATH, 'r', encoding='utf-8') as f:
-    feature_config = json.load(f)
-
-vetted_features = feature_config.get(TARGET_LABEL, {}).get('final_results', {}).get('vetted_features', [])
-categorical_features = feature_config.get('categorical_features_to_keep', [])
-features_to_use = vetted_features + categorical_features
-
-if not vetted_features:
-    raise ValueError(f"未能从特征选择文件 {FEATURE_JSON_PATH} 中为目标 {TARGET_LABEL} 找到'vetted_features'。请先运行stage2脚本。")
-
-print(f"运行模式: {RUN_MODE}")
+TARGET_LABEL = "收盘_shift"
+EVAL_METRIC = "symmetric_mean_absolute_percentage_error"
 print(f"目标标签: {TARGET_LABEL}, 评估指标: {EVAL_METRIC}")
-print(f"将使用 {len(features_to_use)} 个特征进行训练。")
+print(f"\n--- [1] 加载配置与数据 ---")
+from stage31_get_vetted_data import get_train_valid_test_data
 
+from stage31_get_vetted_data import MODEL_OUTPUT_BASE_PATH
 
-#%%
-# --- 2. 自定义模型实现 (Custom Models) ---
-print("\n--- [2/6] 定义自定义模型 ---")
-# 假设自定义模型已在 custom_ag 目录中定义好
-try:
-    from custom_ag.ag_svm import AgSVMModel
-    from custom_ag.ag_nb import IntelligentNaiveBayesModel
-    from custom_ag.ag_tabpfn import TabPFNV2Model
-    from autogluon.tabular.models.lr.lr_model import LinearModel
-    print("自定义模型已加载。")
-except ImportError:
-    print("未找到自定义模型，将使用AutoGluon默认模型。")
-    AgSVMModel, IntelligentNaiveBayesModel, TabPFNV2Model, LinearModel = None, None, None, None
+(
+    train_data_full,
+    valid_data_full,
+    test_data,
+    test1_data,
+    vetted_features,
+    features_to_use,
+    final_cols,
+    test_df,  # 包含 'item_id' 和 'timestamp'
+    test1_df,  # 包含 'item_id' 和 'timestamp'
+) = get_train_valid_test_data(
+    TARGET_LABEL=TARGET_LABEL,
+)
+train_data_full
 
-#%%
-# --- 3. 数据加载与准备 ---
-print("\n--- [3/6] 加载预划分的数据集 ---")
-train_df = pd.read_pickle(TRAIN_DATA_PATH)
-valid_df = pd.read_pickle(VALID_DATA_PATH)
-test_df = pd.read_pickle(TEST_DATA_PATH)
+print("\n--- [2] 定义自定义模型 ---")
+from stage31_get_vetted_data import (
+    AgSVMModel,
+    IntelligentNaiveBayesModel,
+    TabPFNV2Model,
+    TabPFNMixModel,
+    LinearModel,
+    TabularPredictor,
+    TabularDataset,
+    REGRESSION,
+    autogluon_models,
+)
+import pandas as pd
+from auto_config import project_dir, pretrained_dir
 
-# 数据类型修复
-print("正在检查并修复数据类型以兼容AutoGluon...")
-for df_ in [train_df, valid_df, test_df]:
-    for col in df_.columns:
-        if str(df_[col].dtype) == 'Int64':
-            df_[col] = df_[col].astype('float32')
-
-# 选择所需的特征和标签
-final_cols = features_to_use + [TARGET_LABEL]
-train_data_full = train_df[final_cols].dropna(subset=[TARGET_LABEL])
-valid_data_full = valid_df[final_cols].dropna(subset=[TARGET_LABEL])
-test_data = test_df[final_cols] 
-
-print(f"总训练数据: {len(train_data_full)}, 总验证数据: {len(valid_data_full)}, 总测试数据: {len(test_data)}")
-
-#%%
-from scipy.stats import spearmanr
-# --- 特征质量检查: 计算Spearman相关性 ---
-print("\n--- 特征质量检查: 计算与目标变量的Spearman相关性 ---")
-
-# 合并训练和验证数据用于特征质量分析
-combined_data = train_data_full
-X = combined_data[features_to_use]
-y = combined_data[TARGET_LABEL]
-
-print(f"正在计算 {len(features_to_use)} 个特征与目标变量 '{TARGET_LABEL}' 的Spearman相关性...")
-
-# # 计算每个特征与目标变量的Spearman相关性
-corrs = {feat: spearmanr(X[feat], y, nan_policy='omit') for feat in X.columns[10:30]}
-corr_df = pd.DataFrame(corrs, index=['corr', 'p']).T
-print("特征与目标变量的Spearman相关性：")
-print(corr_df.sort_values(by='corr', ascending=False))
-
-
-#%%
-
-#%%
-# --- 4. 定义训练函数 ---
+# %%
 # 将三阶段训练流程封装成一个函数，方便在CV中调用
 def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
     model_path = MODEL_OUTPUT_BASE_PATH / model_path_suffix
-    
     # === 阶段一: 广泛探索 ===
     print(f"\n===== [阶段一 @ {model_path_suffix}] 广泛探索... =====")
-    from autogluon.tabular.configs.hyperparameter_configs import hyperparameter_config_dict
-    autogluon_models = {}
-    for k, v in hyperparameter_config_dict.items():
-        # if k.startswith('zeroshot') or k.startswith('hpo'):
-            # continue  # 跳过零-shot和HPO配置
-        for kk, vv in v.items():
-            if kk!="AG_AUTOMM":
-                autogluon_models[kk] = {}
-    # autogluon_models
-
+    from autogluon.tabular.configs.hyperparameter_configs import (
+        hyperparameter_config_dict,
+    )
     initial_models = {
-                    #   AgSVMModel: {},
-                      LinearModel: {},
-                      TabPFNV2Model: {},
-                      
-                      **autogluon_models, 
-                    #   **hyperparameter_config_dict['zeroshot_hpo_hybrid'], 
-        } 
-    # fitted_models = ["GBM", "RF", "KNN", "CAT", "XT", "FASTAI", "TABPFNMIX", "XGB", "NN_TORCH",
-    #                   "IM_RULEFIT", 
-    #                   "IM_FIGS", 
-    #                  ]
+        #   AgSVMModel: {},
+        LinearModel: {},
+        TabPFNV2Model: {},
+        **autogluon_models,
+        #   **hyperparameter_config_dict['zeroshot_hpo_hybrid'],
+    }
+    fitted_models = [
+        "GBM",
+        "RF",
+        "KNN",
+        "CAT",
+        "XT",
+        "FASTAI",
+        "TABPFNMIX",
+        "XGB",
+        "NN_TORCH",
+        "IM_RULEFIT",
+        "IM_FIGS",
+    ]
+    #    Fitting model: KNeighbors ... Training model for up to 28786.79s of the 28786.79s of remaining time.
+    #         -0.3409  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         2.49s    = Training   runtime
+    #         6.04s    = Validation runtime
+    # Fitting model: LightGBM ... Training model for up to 28777.91s of the 28777.91s of remaining time.
 
+    #         -0.016   = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         343.15s  = Training   runtime
+    # 1.06s    = Validation runtime
+
+    # Fitting model: RandomForest ... Training model for up to 28433.50s of the 28433.50s of remaining time.
+    #         -0.0127  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         321.22s  = Training   runtime
+    #         0.4s     = Validation runtime
+    # Fitting model: CatBoost ... Training model for up to 28111.09s of the 28111.09s of remaining time.
+    #         -0.2166  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         7.42s    = Training   runtime
+    #         0.07s    = Validation runtime
+    # Fitting model: ExtraTrees ... Training model for up to 28103.58s of the 28103.58s of remaining time.
+    #         -0.0127  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         60.93s   = Training   runtime
+    #         0.32s    = Validation runtime
+    # Fitting model: NeuralNetFastAI ... Training model for up to 28041.73s of the 28041.73s of remaining time.
+    # Metric symmetric_mean_absolute_percentage_error is not supported by this model - using mean_squared_error instead
+    #         Warning: Exception caused NeuralNetFastAI to fail during training... Skipping this model.
+    # Fitting model: TabPFNMix ... Training model for up to 28033.04s of the 28033.04s of remaining time.
+    # A maximum of 100 features are allowed, but the dataset has 203 features. A subset of 100 are selected using SelectKBest
+    #         -0.0476  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         17.75s   = Training   runtime
+    #         450.57s  = Validation runtime
+    # Fitting model: XGBoost ... Training model for up to 27563.79s of the 27563.79s of remaining time.
+    #         -0.0162  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         20.13s   = Training   runtime
+    #         1.32s    = Validation runtime
+    # Fitting model: NeuralNetTorch ... Training model for up to 27542.34s of the 27542.34s of remaining time.
+    #         -0.2203  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         1010.11s         = Training   runtime
+    #         1.58s    = Validation runtime
+    # Fitting model: LinearModel ... Training model for up to 26530.65s of the 26530.64s of remaining time.
+    #         -0.4001  = Validation score   (-symmetric_mean_absolute_percentage_error)
+
+    #     Fitting model: RuleFit ... Training model for up to 26501.47s of the 26501.47s of remaining time.
+    #         -0.1925  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         2246.33s         = Training   runtime
+    #         1.47s    = Validation runtime
+    # Fitting model: Figs ... Training model for up to 24253.66s of the 24253.66s of remaining time.
+    #         -0.1598  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         243.16s  = Training   runtime
+    #         0.5s     = Validation runtime
+    # Fitting model: WeightedEnsemble_L2 ... Training model for up to 2878.68s of the 24009.97s of remaining time.
+    #         Ensemble Weights: {'RandomForest': 0.6, 'ExtraTrees': 0.4}
+    #         -0.0125  = Validation score   (-symmetric_mean_absolute_percentage_error)
+    #         0.14s    = Training   runtime
+    #         0.0s     = Validation runtime
+
+    tabpdn_path_dict = {
+            "model_path_classifier": str(
+                pretrained_dir / "autogluon/tabpfn-mix-1.0-classifier"
+            ),  
+            "model_path_regressor": str(
+                pretrained_dir / "autogluon/tabpfn-mix-1.0-regressor"
+            ), 
+    }
     final_hyperparameters = {
+        TabPFNV2Model: {},
+        TabPFNMixModel: [
+            {
+                "ag_args": {"name_suffix": "ZeroShot"},
+                **tabpdn_path_dict,
+            }, 
+            {
+                "ag_args": {"name_suffix": "FineTunedv1"},
+                **tabpdn_path_dict,
+                "n_ensembles": 1,
+                "max_epochs": 30,
+                "ag.sample_rows_val": 5000,  # Beyond 5k val rows fine-tuning becomes very slow
+                "ag.max_rows": 50000,  # Beyond 50k rows, the time taken is longer than most users would like (hours), while the model is very weak at this size
+            }, 
+        ],
         "XT": [
-            {"criterion": "gini", "ag_args": {"name_suffix": "Gini", "problem_types": ["binary", "multiclass"]}},
-            {"criterion": "entropy", "ag_args": {"name_suffix": "Entr", "problem_types": ["binary", "multiclass"]}},
-            {"criterion": "squared_error", "ag_args": {"name_suffix": "MSE", "problem_types": ["regression", "quantile"]}},
-            {"min_samples_leaf": 1, "max_leaf_nodes": 15000, "max_features": 0.5, "ag_args": {"name_suffix": "_r19", "priority": 20}},
+            {
+                "criterion": "gini",
+                "ag_args": {
+                    "name_suffix": "Gini",
+                    "problem_types": ["binary", "multiclass"],
+                },
+            },
+            {
+                "criterion": "entropy",
+                "ag_args": {
+                    "name_suffix": "Entr",
+                    "problem_types": ["binary", "multiclass"],
+                },
+            },
+            {
+                "criterion": "squared_error",
+                "ag_args": {
+                    "name_suffix": "MSE",
+                    "problem_types": ["regression", "quantile"],
+                },
+            },
+            {
+                "min_samples_leaf": 1,
+                "max_leaf_nodes": 15000,
+                "max_features": 0.5,
+                "ag_args": {"name_suffix": "_r19", "priority": 20},
+            },
         ],
         "RF": [
-            {"criterion": "gini", "ag_args": {"name_suffix": "Gini", "problem_types": ["binary", "multiclass"]}},
-            {"criterion": "entropy", "ag_args": {"name_suffix": "Entr", "problem_types": ["binary", "multiclass"]}},
-            {"criterion": "squared_error", "ag_args": {"name_suffix": "MSE", "problem_types": ["regression", "quantile"]}},
-            {"min_samples_leaf": 5, "max_leaf_nodes": 50000, "max_features": 0.5, "ag_args": {"name_suffix": "_r5", "priority": 19}},
-        ],
-        "CAT": [
-            {"depth": 5, "l2_leaf_reg": 4.774992314058497, "learning_rate": 0.038551267822920274, "ag_args": {"name_suffix": "_r16", "priority": 6}},
-            {"depth": 4, "l2_leaf_reg": 1.9950125740798321, "learning_rate": 0.028091050379971633, "ag_args": {"name_suffix": "_r42", "priority": 5}},
-            {"depth": 6, "l2_leaf_reg": 1.8298803017644376, "learning_rate": 0.017844259810823604, "ag_args": {"name_suffix": "_r93", "priority": 4}},
-            {"depth": 7, "l2_leaf_reg": 4.81099604606794, "learning_rate": 0.019085060180573103, "ag_args": {"name_suffix": "_r44", "priority": 3}},
+            {
+                "criterion": "gini",
+                "ag_args": {
+                    "name_suffix": "Gini",
+                    "problem_types": ["binary", "multiclass"],
+                },
+            },
+            {
+                "criterion": "entropy",
+                "ag_args": {
+                    "name_suffix": "Entr",
+                    "problem_types": ["binary", "multiclass"],
+                },
+            },
+            {
+                "criterion": "squared_error",
+                "ag_args": {
+                    "name_suffix": "MSE",
+                    "problem_types": ["regression", "quantile"],
+                },
+            },
+            {
+                "min_samples_leaf": 5,
+                "max_leaf_nodes": 50000,
+                "max_features": 0.5,
+                "ag_args": {"name_suffix": "_r5", "priority": 19},
+            },
         ],
         "GBM": [
             {"extra_trees": True, "ag_args": {"name_suffix": "XT"}},
@@ -176,7 +212,11 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
                 "num_leaves": 128,
                 "feature_fraction": 0.9,
                 "min_data_in_leaf": 3,
-                "ag_args": {"name_suffix": "Large", "priority": 0, "hyperparameter_tune_kwargs": None},
+                "ag_args": {
+                    "name_suffix": "Large",
+                    "priority": 0,
+                    "hyperparameter_tune_kwargs": None,
+                },
             },
             {
                 "extra_trees": False,
@@ -220,99 +260,65 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
             },
         ],
         "XGB": {},
-        
     }
+    from stage49_infras import auto_ag_priority
 
-    
-    predictor_explore = TabularPredictor(label=TARGET_LABEL,
-                                          problem_type=REGRESSION,
-                                            eval_metric=EVAL_METRIC,
-                                              path=(model_path / "phase3_explore").as_posix())
-    predictor_explore.fit(train_data=train_data, 
-                          tuning_data=valid_data,
-                            hyperparameters=initial_models,
-                            # hyperparameters=final_hyperparameters,
-                            # raise_on_no_models_fitted=True
-                        #   num_gpus=*1
-                          time_limit=8 * 60 * 60,  # 8小时
-                          ) # 缩短时间以加速
+    final_hyperparameters = auto_ag_priority(final_hyperparameters)
+
+    predictor_explore = TabularPredictor(
+        label=TARGET_LABEL,
+        problem_type=REGRESSION,
+        eval_metric=EVAL_METRIC,
+        path=(model_path / "phase4_train").as_posix(),
+    )
+    #   path=(model_path / "phase3_explore").as_posix())
+    predictor_explore.fit(
+        train_data=train_data,
+        tuning_data=valid_data,
+        # hyperparameters=initial_models,
+        hyperparameters=final_hyperparameters,
+        # raise_on_no_models_fitted=True
+        #   num_gpus=*1
+        time_limit=8 * 60 * 60,  # 8小时
+    )  # 缩短时间以加速
     leaderboard_explore = predictor_explore.leaderboard(valid_data)
     print(leaderboard_explore)
-    best_model_name = leaderboard_explore.iloc[0]['model']
+    best_model_name = leaderboard_explore.iloc[0]["model"]
     print(f"\n[阶段一] 结论: 最佳模型是 {best_model_name}")
 
     return predictor_explore
 
 
-#%%
-# --- 5. 执行主流程 ---
-print("\n--- [5/6] 开始执行主流程 ---")
+# %%
+train_ag = TabularDataset(train_data_full)
+valid_ag = TabularDataset(valid_data_full)
 
-if RUN_MODE == 'QUICK_CV':
-    print("\n===== 运行模式: 快速交叉验证 (QUICK_CV) =====")
-    
-    # 合并训练集和验证集用于交叉验证
-    train_valid_df = pd.concat([train_data_full, valid_data_full]).sort_index()
-    
-    tscv = TimeSeriesSplit(n_splits=CV_FOLDS)
-    fold_scores = []
-    
-    for i, (train_index, val_index) in enumerate(tscv.split(train_valid_df)):
-        print(f"\n\n<<<<< 开始交叉验证折叠 {i+1}/{CV_FOLDS} >>>>>")
-        train_fold_df = train_valid_df.iloc[train_index]
-        valid_fold_df = train_valid_df.iloc[val_index]
-        
-        print(f"折叠 {i+1}: 训练集大小={len(train_fold_df)}, 验证集大小={len(valid_fold_df)}")
-        
-        # 转换为AutoGluon Dataset
-        train_fold_ag = TabularDataset(train_fold_df)
-        valid_fold_ag = TabularDataset(valid_fold_df)
-        
-        # 在当前折叠上运行训练流程
-        predictor_fold = run_training_pipeline(train_fold_ag, valid_fold_ag, model_path_suffix=f"cv_fold_{i+1}")
-        
-        # 评估并记录分数
-        performance = predictor_fold.evaluate(valid_fold_ag)
-        score = performance[EVAL_METRIC]
-        fold_scores.append(score)
-        print(f">>>>> 折叠 {i+1} 完成, {EVAL_METRIC} 分数: {score:.6f} <<<<<")
-        
-    print("\n\n===== 交叉验证全部完成 =====")
-    print(f"所有折叠的分数: {[round(s, 6) for s in fold_scores]}")
-    print(f"平均 {EVAL_METRIC} 分数: {np.mean(fold_scores):.6f} (+/- {np.std(fold_scores):.6f})")
+predictor_explore = run_training_pipeline(train_ag, valid_ag, model_path_suffix="full_train")
 
-elif RUN_MODE == 'FULL_TRAIN':
-    print("\n===== 运行模式: 完整训练 (FULL_TRAIN) =====")
-    
-    train_ag = TabularDataset(train_data_full)
-    valid_ag = TabularDataset(valid_data_full)
-    
-    # 运行完整的、长时间的训练流程
-    final_predictor = run_training_pipeline(train_ag, valid_ag, model_path_suffix="full_train")
-    
-    # --- 6. 最终评估与预测 ---
-    print("\n--- [6/6] 最终评估与生成预测文件 ---")
-    final_performance = final_predictor.evaluate(valid_ag)
-    print(f"最终集成模型在【验证集】上的表现: {final_performance}")
-
-    # 对测试集进行预测
+def predict_and_save_results(predictor, test_data, test_df, output_prefix, save_importance=False):
     test_ag = TabularDataset(test_data)
-    predictions = final_predictor.predict(test_ag)
-    
+    predictions = predictor.predict(test_ag)
     # 确保 test_df 包含 'item_id' 和 'timestamp'
     submission_df = test_df[['item_id', 'timestamp']].copy()
     submission_df['prediction'] = predictions
-    
     # 保存提交文件
-    submission_path = MODEL_OUTPUT_BASE_PATH / "submission.csv"
-    submission_df.to_csv(submission_path, index=False)
+    submission_path = MODEL_OUTPUT_BASE_PATH / f"{output_prefix}.csv"
+    submission_df.to_csv(submission_path, index=False, 
+                         encoding="utf-8"
+        )
+        
     print(f"\n预测结果已保存到: {submission_path}")
     print(submission_df.head())
+    if save_importance:
+        feature_importance = predictor.feature_importance(valid_data_full)
+        feature_importance.to_csv(
+            MODEL_OUTPUT_BASE_PATH / f"{output_prefix}_feature_importance.csv",
+            index=True,  # 保留“特征名”作为第一列
+            header=True,  # 保留列名
+            encoding="utf-8",
+        )
 
-else:
-    raise ValueError(f"未知的运行模式: '{RUN_MODE}'. 请选择 'QUICK_CV' 或 'FULL_TRAIN'.")
+predict_and_save_results(predictor_explore, test1_data, test1_df, f"{TARGET_LABEL}_test1")
 
-print("\n===== 脚本执行结束 =====")
+predict_and_save_results(predictor_explore, test_data, test_df, f"{TARGET_LABEL}_test")
 
-
-# TabularPredictor saved. To load, use: predictor = TabularPredictor.load("/home/ye_canming/repos/novelties/ts/comp/AutoCute/models/stage4/full_train/phase3_explore")

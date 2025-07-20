@@ -183,7 +183,7 @@ def predict_and_save_results(predictor, test_data, test_df, output_prefix, save_
 
 predict_and_save_results(predictor_explore, test1_data, test1_df, f"{TARGET_LABEL}_test1")
 
-predict_and_save_results(predictor_explore, test1_data, test1_df, f"{TARGET_LABEL}_test1")
+predict_and_save_results(predictor_explore, test_data, test_df, f"{TARGET_LABEL}_test")
 
 
 # TabularPredictor saved. To load, use: predictor = TabularPredictor.load("/home/ye_canming/repos/novelties/ts/comp/AutoCute/models/stage4/full_train/phase3_explore")
