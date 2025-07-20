@@ -134,8 +134,8 @@ def evaluate(ground_truth_path: str, prediction_path: str, verbose=True) -> Dict
         print("\n" + "=" * 50)
     
     # 返回一个包含所有分数的字典，方便程序化使用
-    up_metrics = {"up_metrics"+k: v for k, v in up_metrics.items()}
-    down_metrics = {"down_metrics"+k: v for k, v in down_metrics.items()}
+    up_metrics = {"up_metrics-"+k: v for k, v in up_metrics.items()}
+    down_metrics = {"down_metrics-"+k: v for k, v in down_metrics.items()}
     full_results = {
         "final_score": final_score, 
     } | up_metrics | down_metrics
