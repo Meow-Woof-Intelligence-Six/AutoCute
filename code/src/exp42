@@ -1,0 +1,64 @@
+
+if RUN_MODE == 'QUICK_CV':
+    print("\n===== 运行模式: 快速交叉验证 (QUICK_CV) =====")
+    
+    # 合并训练集和验证集用于交叉验证
+    train_valid_df = pd.concat([train_data_full, valid_data_full]).sort_index()
+    
+    tscv = TimeSeriesSplit(n_splits=CV_FOLDS)
+    fold_scores = []
+    
+    for i, (train_index, val_index) in enumerate(tscv.split(train_valid_df)):
+        print(f"\n\n<<<<< 开始交叉验证折叠 {i+1}/{CV_FOLDS} >>>>>")
+        train_fold_df = train_valid_df.iloc[train_index]
+        valid_fold_df = train_valid_df.iloc[val_index]
+        
+        print(f"折叠 {i+1}: 训练集大小={len(train_fold_df)}, 验证集大小={len(valid_fold_df)}")
+        
+        # 转换为AutoGluon Dataset
+        train_fold_ag = TabularDataset(train_fold_df)
+        valid_fold_ag = TabularDataset(valid_fold_df)
+        
+        # 在当前折叠上运行训练流程
+        predictor_fold = run_training_pipeline(train_fold_ag, valid_fold_ag, model_path_suffix=f"cv_fold_{i+1}")
+        
+        # 评估并记录分数
+        performance = predictor_fold.evaluate(valid_fold_ag)
+        score = performance[EVAL_METRIC]
+        fold_scores.append(score)
+        print(f">>>>> 折叠 {i+1} 完成, {EVAL_METRIC} 分数: {score:.6f} <<<<<")
+        
+    print("\n\n===== 交叉验证全部完成 =====")
+    print(f"所有折叠的分数: {[round(s, 6) for s in fold_scores]}")
+    print(f"平均 {EVAL_METRIC} 分数: {np.mean(fold_scores):.6f} (+/- {np.std(fold_scores):.6f})")
+
+
+    # fitted_models = ["GBM", "RF", "KNN", "CAT", "XT", "FASTAI", "TABPFNMIX", "XGB", "NN_TORCH",
+    #                   "IM_RULEFIT", 
+    #                   "IM_FIGS", 
+    #                  ]
+    # KNN < GBM < RF
+    # predictor = TabularPredictor.load("/home/ye_canming/repos/novelties/ts/comp/AutoCute/models/stage4/cv_fold_5/phase1_explore")
+    # Fitting model: LinearModel ...
+        # 0.17     = Validation score   (spearmanr)
+        # 20.81s   = Training   runtime
+    # 
+    #  0.1569   = Validation score   (spearmanr)
+    # Fitting model: CatBoost ...
+    #         0.2256   = Validation score   (spearmanr)
+    # Fitting model: ExtraTrees ...
+    #         0.2476   = Validation score   (spearmanr)
+    # Fitting model: NeuralNetFastAI ...
+    #         0.2044   = Validation score   (spearmanr)
+    # Fitting model: TabPFNMix ...
+    # A maximum of 100 features are allowed, but the dataset has 240 features. A subset of 100 are selected using SelectKBest
+    #         0.1635   = Validation score   (spearmanr)
+    # Fitting model: XGBoost ...
+    #         0.2226   = Validation score   (spearmanr)
+    # Fitting model: NeuralNetTorch ...
+    #         0.2062   = Validation score   (spearmanr)
+
+    # for model_name in fitted_models:
+        # del initial_models[model_name] 
+
+    #  0.1722 tabpfnv2
