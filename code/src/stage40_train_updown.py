@@ -37,7 +37,8 @@ TARGET_LABEL = '涨跌_shift'
 EVAL_METRIC = 'roc_auc'
 
 # 路径配置
-FEATURE_JSON_PATH = project_dir / "temp/stage2/feature_selection_results_vetted.json"
+# FEATURE_JSON_PATH = project_dir / "temp/stage2/feature_selection_results_vetted.json"
+FEATURE_JSON_PATH = project_dir / "temp/stage2/feature_selection_finance_results_vetted.json"
 TRAIN_DATA_PATH = project_dir / "temp/stage3/train.pkl"
 VALID_DATA_PATH = project_dir / "temp/stage3/valid.pkl"
 TEST_DATA_PATH = project_dir / "temp/stage3/test.pkl"
@@ -178,14 +179,25 @@ autogluon_models = {
 }
 # autogluon_models
 
-initial_models = {
-                #   AgSVMModel: {},
-                    LinearModel: {},
-                    TabPFNModel: {},
+# initial_models = {
+#                 #   AgSVMModel: {},
+#                     LinearModel: {},
+#                     TabPFNModel: {},
                     
-                    **autogluon_models, 
-                #   **hyperparameter_config_dict['zeroshot_hpo_hybrid'], 
-    } 
+#                     **autogluon_models, 
+#                 #   **hyperparameter_config_dict['zeroshot_hpo_hybrid'], 
+#     } 
+
+# --- 修正后的模型字典 ---
+initial_models = {
+    LinearModel: {},
+    TabPFNModel: {},
+    **autogluon_models,
+}
+# 过滤掉 value 为 None 的项
+initial_models = {k: v for k, v in initial_models.items() if k is not None}
+
+
 fitted_models = ["GBM", "RF", "KNN", "CAT", "XT", "FASTAI", "TABPFNMIX", "XGB", "NN_TORCH"]
 
 predictor_explore = TabularPredictor(label=TARGET_LABEL,
@@ -200,7 +212,7 @@ predictor_explore.fit(train_data=train_data_full,
                         ) # 缩短时间以加速
 leaderboard_explore = predictor_explore.leaderboard(valid_data_full)
 pred_proba = predictor_explore.predict_proba(test_data)
-feature_importance = predictor_explore.feature_importance(test_data)
+feature_importance = predictor_explore.feature_importance(valid_data_full)
 
 #%%
 with open(project_dir/"temp/stage4/train_updown_results_summary.txt", "w") as f:

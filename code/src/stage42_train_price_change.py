@@ -29,7 +29,8 @@ warnings.filterwarnings('ignore')
 print("--- [1/6] 加载配置 ---")
 
 # [新增] 运行模式选择: 'QUICK_CV' 或 'FULL_TRAIN'
-RUN_MODE = 'QUICK_CV' 
+# RUN_MODE = 'QUICK_CV' 
+RUN_MODE = 'FULL_TRAIN' 
 CV_FOLDS = 5
 
 # 定义目标标签
@@ -67,12 +68,12 @@ print("\n--- [2/6] 定义自定义模型 ---")
 try:
     from custom_ag.ag_svm import AgSVMModel
     from custom_ag.ag_nb import IntelligentNaiveBayesModel
-    from custom_ag.ag_tabpfn import TabPFNModel
+    from custom_ag.ag_tabpfn import TabPFNV2Model
     from autogluon.tabular.models.lr.lr_model import LinearModel
     print("自定义模型已加载。")
 except ImportError:
     print("未找到自定义模型，将使用AutoGluon默认模型。")
-    AgSVMModel, IntelligentNaiveBayesModel, TabPFNModel, LinearModel = None, None, None, None
+    AgSVMModel, IntelligentNaiveBayesModel, TabPFNV2Model, LinearModel = None, None, None, None
 
 #%%
 # --- 3. 数据加载与准备 ---
@@ -142,27 +143,27 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
     # === 阶段一: 广泛探索 ===
     print(f"\n===== [阶段一 @ {model_path_suffix}] 广泛探索... =====")
     from autogluon.tabular.configs.hyperparameter_configs import hyperparameter_config_dict
-    autogluon_models = {}
-    for k, v in hyperparameter_config_dict.items():
-        # if k.startswith('zeroshot') or k.startswith('hpo'):
-            # continue  # 跳过零-shot和HPO配置
-        for kk, vv in v.items():
-            if kk!="AG_AUTOMM":
-                autogluon_models[kk] = {}
-    # autogluon_models
+    # autogluon_models = {}
+    # for k, v in hyperparameter_config_dict.items():
+    #     # if k.startswith('zeroshot') or k.startswith('hpo'):
+    #         # continue  # 跳过零-shot和HPO配置
+    #     for kk, vv in v.items():
+    #         if kk!="AG_AUTOMM":
+    #             autogluon_models[kk] = {}
+    # # autogluon_models
 
     initial_models = {
                     #   AgSVMModel: {},
                     #   LinearModel: {},
-                      TabPFNModel: {},
+                      TabPFNV2Model: {},
                       
-                      **autogluon_models, 
+                    #   **autogluon_models, 
                     #   **hyperparameter_config_dict['zeroshot_hpo_hybrid'], 
         } 
-    fitted_models = ["GBM", "RF", "KNN", "CAT", "XT", "FASTAI", "TABPFNMIX", "XGB", "NN_TORCH",
-                      "IM_RULEFIT", 
-                      "IM_FIGS", 
-                     ]
+    # fitted_models = ["GBM", "RF", "KNN", "CAT", "XT", "FASTAI", "TABPFNMIX", "XGB", "NN_TORCH",
+    #                   "IM_RULEFIT", 
+    #                   "IM_FIGS", 
+    #                  ]
     # KNN < GBM < RF
     # predictor = TabularPredictor.load("/home/ye_canming/repos/novelties/ts/comp/AutoCute/models/stage4/cv_fold_5/phase1_explore")
     # Fitting model: LinearModel ...
@@ -184,19 +185,97 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
     # Fitting model: NeuralNetTorch ...
     #         0.2062   = Validation score   (spearmanr)
 
-    for model_name in fitted_models:
-        del initial_models[model_name] 
+    # for model_name in fitted_models:
+        # del initial_models[model_name] 
+
+    #  0.1722 tabpfnv2
+
+    final_hyperparameters = {
+        "XT": [
+            {"criterion": "gini", "ag_args": {"name_suffix": "Gini", "problem_types": ["binary", "multiclass"]}},
+            {"criterion": "entropy", "ag_args": {"name_suffix": "Entr", "problem_types": ["binary", "multiclass"]}},
+            {"criterion": "squared_error", "ag_args": {"name_suffix": "MSE", "problem_types": ["regression", "quantile"]}},
+            {"min_samples_leaf": 1, "max_leaf_nodes": 15000, "max_features": 0.5, "ag_args": {"name_suffix": "_r19", "priority": 20}},
+        ],
+        "RF": [
+            {"criterion": "gini", "ag_args": {"name_suffix": "Gini", "problem_types": ["binary", "multiclass"]}},
+            {"criterion": "entropy", "ag_args": {"name_suffix": "Entr", "problem_types": ["binary", "multiclass"]}},
+            {"criterion": "squared_error", "ag_args": {"name_suffix": "MSE", "problem_types": ["regression", "quantile"]}},
+            {"min_samples_leaf": 5, "max_leaf_nodes": 50000, "max_features": 0.5, "ag_args": {"name_suffix": "_r5", "priority": 19}},
+        ],
+        "CAT": [
+            {"depth": 5, "l2_leaf_reg": 4.774992314058497, "learning_rate": 0.038551267822920274, "ag_args": {"name_suffix": "_r16", "priority": 6}},
+            {"depth": 4, "l2_leaf_reg": 1.9950125740798321, "learning_rate": 0.028091050379971633, "ag_args": {"name_suffix": "_r42", "priority": 5}},
+            {"depth": 6, "l2_leaf_reg": 1.8298803017644376, "learning_rate": 0.017844259810823604, "ag_args": {"name_suffix": "_r93", "priority": 4}},
+            {"depth": 7, "l2_leaf_reg": 4.81099604606794, "learning_rate": 0.019085060180573103, "ag_args": {"name_suffix": "_r44", "priority": 3}},
+        ],
+        "GBM": [
+            {"extra_trees": True, "ag_args": {"name_suffix": "XT"}},
+            {},
+            {
+                "learning_rate": 0.03,
+                "num_leaves": 128,
+                "feature_fraction": 0.9,
+                "min_data_in_leaf": 3,
+                "ag_args": {"name_suffix": "Large", "priority": 0, "hyperparameter_tune_kwargs": None},
+            },
+            {
+                "extra_trees": False,
+                "feature_fraction": 0.7248284762542815,
+                "learning_rate": 0.07947286942946127,
+                "min_data_in_leaf": 50,
+                "num_leaves": 89,
+                "ag_args": {"name_suffix": "_r158", "priority": 18},
+            },
+            {
+                "extra_trees": True,
+                "feature_fraction": 0.7832570544199176,
+                "learning_rate": 0.021720607471727896,
+                "min_data_in_leaf": 3,
+                "num_leaves": 21,
+                "ag_args": {"name_suffix": "_r118", "priority": 17},
+            },
+            {
+                "extra_trees": True,
+                "feature_fraction": 0.7113010892989156,
+                "learning_rate": 0.012535427424259274,
+                "min_data_in_leaf": 16,
+                "num_leaves": 48,
+                "ag_args": {"name_suffix": "_r97", "priority": 16},
+            },
+            {
+                "extra_trees": True,
+                "feature_fraction": 0.45555769907110816,
+                "learning_rate": 0.009591347321206594,
+                "min_data_in_leaf": 50,
+                "num_leaves": 110,
+                "ag_args": {"name_suffix": "_r71", "priority": 15},
+            },
+            {
+                "extra_trees": False,
+                "feature_fraction": 0.40979710161022476,
+                "learning_rate": 0.008708890211023034,
+                "min_data_in_leaf": 3,
+                "num_leaves": 80,
+                "ag_args": {"name_suffix": "_r111", "priority": 14},
+            },
+        ],
+        "XGB": {},
+        
+    }
+
     
     predictor_explore = TabularPredictor(label=TARGET_LABEL,
                                           problem_type=REGRESSION,
                                             eval_metric=EVAL_METRIC,
-                                              path=model_path / "phase1_explore")
+                                              path=(model_path / "phase3_explore").as_posix())
     predictor_explore.fit(train_data=train_data, 
                           tuning_data=valid_data,
-                            hyperparameters=initial_models, 
-                            raise_on_no_models_fitted = True
-                        #   num_gpus=1
-                        #   time_limit=600
+                            hyperparameters=initial_models,
+                            # hyperparameters=final_hyperparameters,
+                            # raise_on_no_models_fitted=True
+                        #   num_gpus=*1
+                          time_limit=8 * 60 * 60,  # 8小时
                           ) # 缩短时间以加速
     leaderboard_explore = predictor_explore.leaderboard(valid_data)
     print(leaderboard_explore)
@@ -204,17 +283,7 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
     print(f"\n[阶段一] 结论: 最佳模型是 {best_model_name}")
 
     return predictor_explore
-    # # === 阶段二: HPO ===
-    # print(f"\n===== [阶段二 @ {model_path_suffix}] HPO... =====")
-    # predictor_hpo = TabularPredictor(label=TARGET_LABEL, problem_type=REGRESSION, eval_metric=EVAL_METRIC, path=model_path / "phase2_hpo")
-    # predictor_hpo.fit(train_data=train_data, tuning_data=valid_data, hyperparameters={best_model_name: {}}, hyperparameter_tune_kwargs={'num_trials': 5, 'searcher': 'auto'}, time_limit=1200) # 减少trial数量
 
-    # # === 阶段三: 集成 ===
-    # print(f"\n===== [阶段三 @ {model_path_suffix}] 集成... =====")
-    # predictor_final = TabularPredictor(label=TARGET_LABEL, problem_type=REGRESSION, eval_metric=EVAL_METRIC, path=model_path / "phase3_final_ensemble")
-    # predictor_final.fit(train_data=train_data, tuning_data=valid_data, time_limit=300, fit_weighted_ensemble=True)
-    
-    # return predictor_final
 
 #%%
 # --- 5. 执行主流程 ---
@@ -285,3 +354,6 @@ else:
     raise ValueError(f"未知的运行模式: '{RUN_MODE}'. 请选择 'QUICK_CV' 或 'FULL_TRAIN'.")
 
 print("\n===== 脚本执行结束 =====")
+
+
+# TabularPredictor saved. To load, use: predictor = TabularPredictor.load("/home/ye_canming/repos/novelties/ts/comp/AutoCute/models/stage4/full_train/phase3_explore")

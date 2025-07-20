@@ -1,7 +1,7 @@
 #%%
 import pandas as pd
 from auto_config import project_dir
-df158 = pd.read_pickle(project_dir / "temp/qlib_alpha158_ranked_with_stock_finance_info.pkl")
+df158 = pd.read_pickle(project_dir / project_dir / "temp/qlib_alpha158_ranked_with_stock_finance_info.pkl")
 df158
 #%%
 # 先解决vwap不存在的问题。

@@ -1,244 +1,120 @@
 #%%
 import pandas as pd
 from pathlib import Path
-from auto_config import project_dir
-from auto_config import qlib_dir
+from auto_config import project_dir, qlib_dir
 
-# 读入财务数据
-#Assets_Liabilities_csv_path = project_dir/"data/finance/Assets_Liabilities.csv" 
-#Financial_csv_path = project_dir/"data/finance/Financial.csv" 
-#profit_csv_path = project_dir/"data/finance/profit.csv" 
-# 1. 读沪深300成分股（空格分隔，只要空格前部分，再去零）
-hs300_df = pd.read_csv(qlib_dir /
-    "instruments/all.txt",
-    sep='\t',          # 文件里是 tab 分隔
+# =============== 1️⃣ 读取沪深300成分股（去前导0） ===============
+hs300_df = pd.read_csv(
+    qlib_dir / "instruments/all.txt",
+    sep='\t',
     header=None,
     names=['code', 'start_date', 'end_date']
 )
 hs300 = hs300_df['code'].astype(str).str.lstrip('0').tolist()
-hs300
-#%%
-# 2. 读三张财务表
+
+# =============== 2️⃣ 读取财务三表 ===============
 Assets_Liabilities_df = pd.read_csv(project_dir / "data/finance/Assets_Liabilities.csv")
 Financial_df          = pd.read_csv(project_dir / "data/finance/Financial.csv")
 profit_df             = pd.read_csv(project_dir / "data/finance/profit.csv")
-profit_df  
 
-
-# 读入之前汇总的pkl数据
-df158 = pd.read_pickle(project_dir / "temp/qlib_alpha158_ranked_with_stock_info.pkl")
-
-#%%
-# 3) 统一财务表股票代码格式（去 0 前缀）
+# =============== 3️⃣ 清理列、去前导0、过滤沪深300 ===============
 for df in (Assets_Liabilities_df, Financial_df, profit_df):
     df['股票代码'] = df['股票代码'].astype(str).str.lstrip('0')
 
-# 4) 过滤
-Assets_Liabilities1 = Assets_Liabilities_df[Assets_Liabilities_df['股票代码'].isin(hs300)].reset_index(drop=True)
-Financial1          = Financial_df[Financial_df['股票代码'].isin(hs300)].reset_index(drop=True)
-profit1             = profit_df[profit_df['股票代码'].isin(hs300)].reset_index(drop=True)
-# %%
-Assets_Liabilities1
-# %%
-## 排序
-for df_name in ['Assets_Liabilities1', 'Financial1', 'profit1']:
-    df = globals()[df_name]
-    
-    # 删除“序号”列（若存在）
+Assets_Liabilities_df = Assets_Liabilities_df[Assets_Liabilities_df['股票代码'].isin(hs300)].reset_index(drop=True)
+Financial_df          = Financial_df[Financial_df['股票代码'].isin(hs300)].reset_index(drop=True)
+profit_df             = profit_df[profit_df['股票代码'].isin(hs300)].reset_index(drop=True)
+
+# =============== 4️⃣ 重命名列统一格式 ===============
+for df in (Assets_Liabilities_df, Financial_df, profit_df):
     if '序号' in df.columns:
-        df = df.drop(columns=['序号'])
-    
-    # 重排列顺序
-    if '股票代码' in df.columns and 'date' in df.columns:
-        other_cols = [col for col in df.columns if col not in ['股票代码', 'date']]
-        df = df[['股票代码', 'date'] + other_cols]
-    else:
-        print(f"Warning: {df_name} missing '股票代码' or 'date' columns.")
-    
-    # 排序
-    df = df.sort_values(by=['股票代码', 'date']).reset_index(drop=True)
-    
-    # 更新回全局变量
-    globals()[df_name] = df
-# %%
-Assets_Liabilities1
-Financial1
-profit1
-# %%
-## 列名转换
-for df_name in ['Assets_Liabilities1', 'Financial1', 'profit1']:
-    df = globals()[df_name]
-    
-    # 重命名列
-    df = df.rename(columns={'股票代码': 'item_id', 'date': 'timestamp'})
-    
-    # 更新回全局变量
-    globals()[df_name] = df
+        df.drop(columns=['序号'], inplace=True)
+    df.rename(columns={'股票代码': 'item_id', 'date': 'timestamp'}, inplace=True)
 
-# %%
-# 3. 合并财务三表
-df_financial = (Assets_Liabilities1
-                .merge(Financial1, on=['item_id', 'timestamp'], how='outer', suffixes=('_al', '_fin'))
-                .merge(profit1,   on=['item_id', 'timestamp'], how='outer'))
-df_financial
-#%%
-import pandas as pd
+# =============== 5️⃣ 合并三张财报表 ===============
+df_financial = (
+    Assets_Liabilities_df
+    .merge(Financial_df, on=['item_id', 'timestamp'], how='outer', suffixes=('_al', '_fin'))
+    .merge(profit_df, on=['item_id', 'timestamp'], how='outer')
+)
 
+# =============== 6️⃣ 财报表补齐完整日期 & 次日生效 ===============
 def fill_financial_complete_date(df, start_date='2015-04-20', end_date='2025-04-25'):
-    # 1. 删除指定列（存在则删）
-    cols_to_drop = ['股票简称_fin', '最新公告日期', '股票简称_al', '公告日期_y']
-    df = df.drop(columns=[c for c in cols_to_drop if c in df.columns])
-    
-    # 2. 股票简称和所处行业按 item_id 填充（组内前后向填充）
-    for col in ['股票简称', '所处行业']:
-        if col in df.columns:
-            df[col] = df.groupby('item_id')[col].transform(lambda x: x.ffill().bfill())
-    
-    # 3. 转 timestamp 为 datetime
+    # 转换日期格式
     df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y%m%d', errors='coerce')
-    
-    # 4. 按 item_id 分组，补齐完整日期区间并填充缺失值
-    def fill_group(g):
+    # 🚩 财报发布日次日才生效
+    df['timestamp'] += pd.Timedelta(days=1)
 
+    def fill_group(g):
         full_dates = pd.date_range(start=start_date, end=end_date, freq='D')
         g = g.set_index('timestamp').sort_index()
         g = g.reindex(full_dates)
-        
-        # 填充item_id、股票简称、所处行业列（先前向再后向）
-        g['item_id'] = g['item_id'].fillna(method='ffill').fillna(method='bfill')
+
+        # 填充 item_id
+        g['item_id'] = g['item_id'].ffill().bfill()
+
+        # 填充股票简称、所处行业（若存在）
         for col in ['股票简称', '所处行业']:
             if col in g.columns:
-                g[col] = g[col].fillna(method='ffill').fillna(method='bfill')
-        
-        # 其他数值列
-        fill_cols = [c for c in g.columns if c not in ['item_id', '股票简称', '所处行业']]
-        
-        known_dates = g.dropna(subset=fill_cols, how='all').index
-        missing_dates = g[g[fill_cols].isnull().all(axis=1)].index
-        
-        for missing_date in missing_dates:
-            diffs = known_dates - missing_date
-            left_dates = known_dates[diffs < pd.Timedelta(0)]
-            right_dates = known_dates[diffs >= pd.Timedelta(0)]
-            
-            if len(left_dates) == 0 and len(right_dates) > 0:
-                # nearest_date = right_dates.min()
-                continue  # 没有左侧日期，跳过填充
-            else: 
-                nearest_date = left_dates.max()
-            g.loc[missing_date, fill_cols] = g.loc[nearest_date, fill_cols]
+                g[col] = g[col].ffill().bfill()
 
-        
+        # 填充其他财务列（forward fill）
+        fill_cols = [c for c in g.columns if c not in ['item_id', '股票简称', '所处行业']]
+        g[fill_cols] = g[fill_cols].ffill()
+
         g = g.reset_index().rename(columns={'index': 'timestamp'})
-        # 转回字符串格式方便后续使用
         g['timestamp'] = g['timestamp'].dt.strftime('%Y%m%d')
         return g
-    
+
     df_filled = df.groupby('item_id', group_keys=False).apply(fill_group)
     return df_filled
 
-# 使用示例：
 df_financial_filled = fill_financial_complete_date(df_financial)
 
-# %%
-# df_financial_filled['timestamp'] = pd.to_datetime(df_financial_filled['timestamp'], format='%Y%m%d', errors='coerce')
+# =============== 7️⃣ 保存财报表填充后中间结果（可选） ===============
+df_financial_filled.to_csv(project_dir / "temp/stage1/df_financial_filled.csv", index=False, encoding='utf-8-sig')
 
-df_financial_filled
-df_financial_filled.to_csv("AutoCute/temp/stage1/df_financial_filled.csv", index=False, encoding="utf-8-sig")
-# %%
-import pandas as pd
+# =============== 8️⃣ 读取并填充 df158 完整日期 ===============
+df158 = pd.read_pickle(project_dir / "temp/qlib_alpha158_ranked_with_stock_info.pkl")
 
 def fill_df158_with_dates(df, start_date='2015-04-20', end_date='2025-04-25'):
-    # 确保 timestamp 是 datetime 类型
     df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y%m%d', errors='coerce')
-    
+
     def fill_group(g):
-        # 生成完整日期索引
         full_dates = pd.date_range(start=start_date, end=end_date, freq='D')
         g = g.set_index('timestamp').sort_index()
-        
-        # 重新索引，补齐所有日期，缺失的行自动生成，内容为空
         g = g.reindex(full_dates)
-        
-        # 填充 item_id（因为新行只有 timestamp，item_id 要填上）
-        g['item_id'] = g['item_id'].fillna(method='ffill').fillna(method='bfill')
-        
-        # 其他列保持缺失，不填充，保持 NaN
-        
+        g['item_id'] = g['item_id'].ffill().bfill()
         g = g.reset_index().rename(columns={'index': 'timestamp'})
         return g
-    
-    # 按 item_id 分组处理
+
     df_filled = df.groupby('item_id', group_keys=False).apply(fill_group)
-    
-    # timestamp 保持 datetime64[ns]，方便后续处理
     return df_filled
 
-# 用法示例：
 df158_filled = fill_df158_with_dates(df158)
-df158_filled.to_csv("AutoCute/temp/stage1/df158_filled.csv", index=False, encoding="utf-8-sig")
 
-#%%
-df158_filled
-# print(df158_filled['timestamp'].dtype)
-#%%
-
-df_financial_filled = df_financial
-
-df158_filled['item_id'] = df158_filled['item_id'].astype(int)
+# =============== 9️⃣ 转换日期格式以便合并 ===============
+df158_filled['timestamp'] = pd.to_datetime(df158_filled['timestamp'])
 df_financial_filled['item_id'] = df_financial_filled['item_id'].astype(int)
-df158_filled['timestamp'] = pd.to_datetime(df158_filled['timestamp'], format='%Y%m%d', errors='coerce')
+df158_filled['item_id'] = df158_filled['item_id'].astype(int)
 df_financial_filled['timestamp'] = pd.to_datetime(df_financial_filled['timestamp'], format='%Y%m%d', errors='coerce')
 
-
-# df_financial_filled['item_id'] = df_financial_filled['item_id'].astype(str)
-# 去除字符串中的 .0（只去掉末尾 .0 的情况，防止误删小数部分）
-# df158_filled['item_id'] = df158_filled['item_id'].str.replace(r'\.0$', '', regex=True)
-
-df_merged1 = pd.merge(
+# =============== 🔟 合并 df158 与 财务表 ===============
+df_merged = pd.merge(
     df158_filled,
     df_financial_filled,
     on=['item_id', 'timestamp'],
-    how='outer',  # 根据需要改成 'outer inner'、'left' 或 'right'
-    suffixes=('_df158', '_df_financial')
+    how='left'  # 保留 df158 的完整交易日粒度
 )
 
-df_merged1
-#%%
-# 获取前 3-50 列（注意 Python 索引从 0 开始，对应位置为 2:50）
-cols_to_check = df_merged1.columns[2:50]
+# =============== ⓫ 可选：删除无效行（如前几列都是 NaN 可过滤） ===============
+cols_to_check = df_merged.columns[2:50]
+df_merged = df_merged[~df_merged[cols_to_check].isna().all(axis=1)].reset_index(drop=True)
 
+# =============== ⓬ 保存合并结果 ===============
+df_merged.to_pickle(project_dir / "temp/qlib_alpha158_ranked_with_stock_finance_info.pkl")
+df_merged.to_csv(project_dir / "temp/stage1/df_merged_with_financial.csv", index=False, encoding='utf-8-sig')
 
-# 删除这些列中全为 NA 的行
-# df_merged1 = df_merged1[~df_merged1[cols_to_check].isna().all(axis=1)].copy()
-
-# cols_to_drop = [
-#     '资产-货币资金',
-#     '资产-应收账款',
-#     '资产-存货',
-#     '负债-应付账款',
-#     '负债-预收账款',
-#     '销售毛利率',
-#     '营业总支出-营业支出',
-#     '营业总支出-销售费用',
-#     '营业总支出-财务费用'
-# ]
-
-# 删除这些列（若列存在再删除，避免报错）
-# df_merged1 = df_merged1.drop(columns=[col for col in cols_to_drop if col in df_merged1.columns])
-
-
-#%%
-df_merged1.to_pickle(project_dir / "temp/qlib_alpha158_ranked_with_stock_finance_info.pkl")
-
-
-df_merged1.to_csv("AutoCute/temp/stage1/df_merged1.csv", index=False, encoding="utf-8-sig")
-
-
-
-
-
-
-
+print(f"[✅] 合并完成并保存: {df_merged.shape}")
 
 # %%

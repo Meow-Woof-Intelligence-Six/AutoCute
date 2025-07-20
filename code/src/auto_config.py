@@ -1,10 +1,19 @@
 #%%
 from pathlib import Path
+from tempfile import tempdir
 this_file = Path(__file__).resolve()
 this_dir = this_file.parent
 code_dir = this_dir.parent
 project_dir = code_dir.parent
 project_dir
+#%%
+
+data_dir = project_dir / "data"
+model_dir = project_dir / "model"
+temp_dir = project_dir / "temp"
+
+pretrained_dir = project_dir / "data/pretrained"
+
 
 #%%
 csv_path = project_dir/"data/test.csv"

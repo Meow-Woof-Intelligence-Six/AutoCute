@@ -2,8 +2,8 @@
 import pandas as pd
 from auto_config import project_dir
 
-df158 = pd.read_pickle(project_dir / "temp/lag158.pkl")
-
+# df158 = pd.read_pickle(project_dir / "temp/lag158.pkl")
+df158 = pd.read_pickle(project_dir / "temp/lag158_finance.pkl")
 
 # %%
 # https://feature-engine.trainindata.com/en/latest/user_guide/creation/CyclicalFeatures.html
@@ -49,6 +49,19 @@ cyclical_encoder = CyclicalFeatures(
 df158 = cyclical_encoder.fit_transform(df158)
 df158
 # %%
-df158.to_pickle(project_dir / "temp/lag158_with_timestamp_features.pkl")
+# df158.to_pickle(project_dir / "temp/lag158_with_timestamp_features.pkl")
+df158.to_pickle(project_dir / "temp/lag158_finance_with_timestamp_features.pkl")
+
+# %%
+# 保存 特征转换器
+import joblib
+time_features_maker = dict(
+    date_features=date_features,
+    cyclical_encoder=cyclical_encoder
+)
+time_features_maker_path = project_dir / "temp/stage2/time_features_maker.pkl"
+time_features_maker_path.parent.mkdir(parents=True, exist_ok=True)
+joblib.dump(time_features_maker, time_features_maker_path)
+
 
 # %%

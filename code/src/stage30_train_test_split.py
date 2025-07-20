@@ -28,7 +28,8 @@ except ImportError:
     test_dates = ('2025-04-25', '2025-04-25')
 
 # 定义输入和输出路径
-INPUT_DATA_PATH = project_dir / "temp/lag158_with_timestamp_features.pkl"
+# INPUT_DATA_PATH = project_dir / "temp/lag158_with_timestamp_features.pkl"
+INPUT_DATA_PATH = project_dir / "temp/lag158_finance_with_timestamp_features.pkl"
 OUTPUT_DIR = project_dir / "temp/stage3"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
