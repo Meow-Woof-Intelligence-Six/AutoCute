@@ -1,7 +1,7 @@
 #%%
 import pandas as pd
 from auto_config import project_dir
-df158 = pd.read_pickle(project_dir / project_dir / "temp/qlib_alpha158_ranked_with_stock_finance_info.pkl")
+df158 = pd.read_pickle(project_dir / "temp/qlib_alpha158_ranked_with_stock_finance_info.pkl")
 df158
 #%%
 # 先解决vwap不存在的问题。
@@ -14,13 +14,14 @@ df158
 # df158['timestamp'].min()+60, df158['timestamp'].max()
 # import missingno as msno
 # msno.matrix(df158.sort_values('timestamp'))   # 按日期排序后看缺失分布
+#%%
 # TODO 详细分析能不能删除
 
-# 这里直接粗暴删除
-before = len(df158)
-df158 = df158.dropna()
-after = len(df158)
-print(f"删除缺失值前后数据量变化: {before} -> {after}, delta: {before - after}")
+# # 这里直接粗暴删除
+# before = len(df158)
+# df158 = df158.dropna()
+# after = len(df158)
+# print(f"删除缺失值前后数据量变化: {before} -> {after}, delta: {before - after}")
 
 # %%
 # inf 问题
@@ -50,7 +51,8 @@ winsorizer = Winsorizer(
     capping_method='gaussian',
     tail='both',
     fold=3,
-    variables=variables
+    variables=variables, 
+    missing_values='ignore',
 )
 df158_winsorized = winsorizer.fit_transform(df158)
 # 检查是否还有离群值
@@ -112,31 +114,31 @@ def auto_transform(df, exclude_cols=None):
     exclude_cols = set(exclude_cols or [])
     num_cols = df.select_dtypes(include=[np.number]).columns.difference(exclude_cols)
 
-    # 为每列挑选变换器，并构造 ColumnTransformer
-    transformers = []
+    # 创建结果DataFrame的副本
+    transformed_df = df.copy()
     mapping = {}
 
     for col in num_cols:
         key = choose_transform(df[col])
         if key is None:
             continue
+        
+        # 获取变换器实例
         tf = TRANSFORMERS[key]
-        transformers.append((f"{col}_{key}", tf, [col]))
+        
+        # 获取非NaN的mask和值
+        non_nan_mask = ~df[col].isna()
+        if not non_nan_mask.any():  # 如果全是NaN，跳过
+            continue
+            
+        # 只对非NaN值进行变换
+        non_nan_values = df.loc[non_nan_mask, [col]]
+        transformed_values = tf.fit_transform(non_nan_values)
+        
+        # 将变换后的值放回对应位置，保持NaN不变
+        transformed_df.loc[non_nan_mask, col] = transformed_values.values.flatten().astype(transformed_df[col].dtype)
         mapping[col] = key
 
-    ct = ColumnTransformer(
-        transformers=transformers,
-        remainder='passthrough'
-    )
-
-    transformed = ct.fit_transform(df)
-
-    # 重新整理列名（保持原列顺序）
-    new_cols = [t[2][0] for t in transformers]
-    passthrough = [c for c in df.columns if c not in new_cols]
-    new_cols.extend(passthrough)
-
-    transformed_df = pd.DataFrame(transformed, columns=new_cols, index=df.index)
     return transformed_df, mapping
 
 
