@@ -22,5 +22,7 @@ def get_simple_data(TARGET_LABEL = "收盘", today=today):
     )
     # 非交易日的处理逻辑
     data = data.convert_frequency(freq="D").fill_missing_values("interpolate")
+    return data
+
 TARGET_LABEL = "收盘"
 data = get_simple_data(TARGET_LABEL=TARGET_LABEL, today=today)
