@@ -121,3 +121,10 @@ df360 = df360.sort_index(level=1)
 df158.to_pickle(project_dir / "temp/qlib_alpha158_ranked.pkl")
 df360.to_pickle(project_dir / "temp/qlib_alpha360_ranked.pkl")
 # %%
+print("Processing completed successfully!")
+print(f"df158 shape: {df158.shape}")
+print(f"df360 shape: {df360.shape}")
+print(f"Saved files:")
+print(f"  - {project_dir / 'temp/qlib_alpha158_ranked.pkl'}")
+print(f"  - {project_dir / 'temp/qlib_alpha360_ranked.pkl'}")
+# %%
