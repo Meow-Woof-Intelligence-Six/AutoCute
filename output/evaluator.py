@@ -42,20 +42,17 @@ def _calculate_metrics_for_category(gt_series: pd.Series, pred_series: pd.Series
     
     # 对于预测列表中未出现在真实列表中的股票，给予一个惩罚性排名
     # 常见的惩罚排名是 N+1，这里我们使用 11
-    penalty_rank = N + 1
+    # penalty_rank = N + 1
     
     sum_d_squared = 0
     for pred_rank, pred_code in enumerate(pred_series, 1):
-        actual_rank = gt_rank_map.get(pred_code, penalty_rank)
-        # d = pred_rank - actual_rank
-        d = abs(pred_rank - actual_rank)
+        actual_rank = gt_rank_map.get(pred_code, None)
+        d = pred_rank - actual_rank if actual_rank is not None else 10 # 如果未找到真实排名，则使用惩罚分数
         sum_d_squared += d ** 2
         
     # Spearman公式
     denominator = N * (N**2 - 1)
     spearman_corr = 1 - (6 * sum_d_squared) / denominator
-    # spearman_corr = 1 - (15 * sum_d_squared) / denominator
-    # spearman_corr = 1 - (14.736769 * sum_d_squared) / denominator
     # 计算命中和未命中的股票代码
     hit_stocks = list(gt_set.intersection(pred_set))
     missed_gt_stocks = list(gt_set - pred_set)  # 真实股票中预测遗漏的

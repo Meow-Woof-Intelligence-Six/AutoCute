@@ -13,3 +13,6 @@
 [submodule "third_parties/wnb"]
 	path = third_parties/wnb
 	url = https://github.com/msamsami/wnb.git
+[submodule "third_parties/flash-attention"]
+	path = third_parties/flash-attention
+	url = https://github.com/Dao-AILab/flash-attention.git
