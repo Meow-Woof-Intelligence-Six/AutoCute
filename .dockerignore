@@ -1,13 +1,22 @@
 model/*
 models/*
-tmp*
-tmp
-temp
-AutogluonModels
-data
-joblib_cache
+*/tmp*
+*/AutogluonModels
+*/joblib_cache
 
-!third_parties
+# 
+third_parties/flash-attention
+third_parties/thundersvm
+third_parties/wnb
+third_parties/flash_attn-*
+
+
+
+# 比赛方填充，不能改
+data
+output
+temp
+# Python 忽略
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
