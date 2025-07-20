@@ -1,7 +1,10 @@
 #%%
 import pandas as pd
 from pathlib import Path
-from auto_config import project_dir, qlib_dir
+from auto_config import project_dir, qlib_dir, custom_data_dir, valid_dates, train_dates
+train_dates
+#%%
+
 
 # =============== 1️⃣ 读取沪深300成分股（去前导0） ===============
 hs300_df = pd.read_csv(
@@ -13,9 +16,9 @@ hs300_df = pd.read_csv(
 hs300 = hs300_df['code'].astype(str).str.lstrip('0').tolist()
 
 # =============== 2️⃣ 读取财务三表 ===============
-Assets_Liabilities_df = pd.read_csv(project_dir / "data/finance/Assets_Liabilities.csv")
-Financial_df          = pd.read_csv(project_dir / "data/finance/Financial.csv")
-profit_df             = pd.read_csv(project_dir / "data/finance/profit.csv")
+Assets_Liabilities_df = pd.read_csv(custom_data_dir / "finance/Assets_Liabilities.csv")
+Financial_df          = pd.read_csv(custom_data_dir / "finance/Financial.csv")
+profit_df             = pd.read_csv(custom_data_dir / "finance/profit.csv")
 
 # =============== 3️⃣ 清理列、去前导0、过滤沪深300 ===============
 for df in (Assets_Liabilities_df, Financial_df, profit_df):
@@ -39,7 +42,7 @@ df_financial = (
 )
 
 # =============== 6️⃣ 财报表补齐完整日期 & 次日生效 ===============
-def fill_financial_complete_date(df, start_date='2015-04-20', end_date='2025-04-25'):
+def fill_financial_complete_date(df, start_date=train_dates[0], end_date=valid_dates[1]):
     # 转换日期格式
     df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y%m%d', errors='coerce')
     # 🚩 财报发布日次日才生效
@@ -77,7 +80,7 @@ df_financial_filled.to_csv(project_dir / "temp/stage1/df_financial_filled.csv", 
 # =============== 8️⃣ 读取并填充 df158 完整日期 ===============
 df158 = pd.read_pickle(project_dir / "temp/qlib_alpha158_ranked_with_stock_info.pkl")
 
-def fill_df158_with_dates(df, start_date='2015-04-20', end_date='2025-04-25'):
+def fill_df158_with_dates(df, start_date=train_dates[0], end_date= valid_dates[1]):
     df['timestamp'] = pd.to_datetime(df['timestamp'], format='%Y%m%d', errors='coerce')
 
     def fill_group(g):

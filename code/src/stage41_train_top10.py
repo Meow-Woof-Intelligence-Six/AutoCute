@@ -1,103 +1,20 @@
 #%%
-# stage42_train_price_change.py
-# 目标：使用AutoGluon，结合自定义模型和HPO，训练一个预测涨跌幅排名的回归模型。
-# 假设：stage30已成功运行，生成了train.pkl, valid.pkl, test.pkl
-
-import os
-# [修复] 解决OpenBLAS多线程导致的段错误 (Segmentation Fault)
-os.environ['OPENBLAS_NUM_THREADS'] = '64'
-os.environ['GOTO_NUM_THREADS'] = '64'
-os.environ['OMP_NUM_THREADS'] = '64'
-
-from auto_config import project_dir
-os.environ["TABPFN_MODEL_CACHE_DIR"] = (project_dir/"data/pretrained").as_posix()
-print(f"设置 TABPFN_MODEL_CACHE_DIR 为: {os.environ['TABPFN_MODEL_CACHE_DIR']}")
-
-import pandas as pd
-import numpy as np
-import json
-from pathlib import Path
-import warnings
-from autogluon.tabular import TabularDataset, TabularPredictor
-from autogluon.core.constants import REGRESSION
-from sklearn.model_selection import TimeSeriesSplit
-
-warnings.filterwarnings('ignore')
-
-#%%
-# --- 1. 配置与环境准备 ---
-print("--- [1/6] 加载配置 ---")
-
-# [新增] 运行模式选择: 'QUICK_CV' 或 'FULL_TRAIN'
-RUN_MODE = 'QUICK_CV' 
-CV_FOLDS = 5
-
 # 定义目标标签
 TARGET_LABEL = '龙虎_shift' 
 EVAL_METRIC = 'roc_auc'
-
-# 路径配置
-# FEATURE_JSON_PATH = project_dir / "temp/stage2/feature_selection_results_vetted.json"
-FEATURE_JSON_PATH = project_dir / "temp/stage2/feature_selection_finance_results_vetted.json"
-TRAIN_DATA_PATH = project_dir / "temp/stage3/train.pkl"
-VALID_DATA_PATH = project_dir / "temp/stage3/valid.pkl"
-TEST_DATA_PATH = project_dir / "temp/stage3/test.pkl"
-MODEL_OUTPUT_BASE_PATH = project_dir / "models/stage4"
-MODEL_OUTPUT_BASE_PATH.mkdir(parents=True, exist_ok=True)
-
-# 加载特征选择JSON
-with open(FEATURE_JSON_PATH, 'r', encoding='utf-8') as f:
-    feature_config = json.load(f)
-
-vetted_features = feature_config.get(TARGET_LABEL, {}).get('final_results', {}).get('vetted_features', [])
-categorical_features = feature_config.get('categorical_features_to_keep', [])
-features_to_use = vetted_features + categorical_features
-
-if not vetted_features:
-    raise ValueError(f"未能从特征选择文件 {FEATURE_JSON_PATH} 中为目标 {TARGET_LABEL} 找到'vetted_features'。请先运行stage2脚本。")
-
-print(f"运行模式: {RUN_MODE}")
 print(f"目标标签: {TARGET_LABEL}, 评估指标: {EVAL_METRIC}")
-print(f"将使用 {len(features_to_use)} 个特征进行训练。")
+print(f"\n--- [1] 加载配置与数据 ---")
+from stage31_get_vetted_data import get_train_valid_test_data
 
+from stage31_get_vetted_data import MODEL_OUTPUT_BASE_PATH
 
-#%%
-# --- 2. 自定义模型实现 (Custom Models) ---
-print("\n--- [2/6] 定义自定义模型 ---")
-# 假设自定义模型已在 custom_ag 目录中定义好
-try:
-    from custom_ag.ag_svm import AgSVMModel
-    from custom_ag.ag_nb import IntelligentNaiveBayesModel
-    from custom_ag.ag_tabpfn import TabPFNModel
-    from autogluon.tabular.models.lr.lr_model import LinearModel
-    print("自定义模型已加载。")
-except ImportError:
-    print("未找到自定义模型，将使用AutoGluon默认模型。")
-    AgSVMModel, IntelligentNaiveBayesModel, TabPFNModel, LinearModel = None, None, None, None
-
-#%%
-# --- 3. 数据加载与准备 ---
-print("\n--- [3/6] 加载预划分的数据集 ---")
-train_df = pd.read_pickle(TRAIN_DATA_PATH)
-valid_df = pd.read_pickle(VALID_DATA_PATH)
-test_df = pd.read_pickle(TEST_DATA_PATH)
-
-# 数据类型修复
-print("正在检查并修复数据类型以兼容AutoGluon...")
-for df_ in [train_df, valid_df, test_df]:
-    for col in df_.columns:
-        if str(df_[col].dtype) == 'Int64':
-            df_[col] = df_[col].astype('float32')
-
-# 选择所需的特征和标签
-final_cols = features_to_use + [TARGET_LABEL]
-train_data_full = train_df[final_cols].dropna(subset=[TARGET_LABEL])
-valid_data_full = valid_df[final_cols].dropna(subset=[TARGET_LABEL])
-test_data = test_df[final_cols] 
-
-print(f"总训练数据: {len(train_data_full)}, 总验证数据: {len(valid_data_full)}, 总测试数据: {len(test_data)}")
-#%%
+train_data_full, valid_data_full, test_data, test1_data, vetted_features, features_to_use, final_cols = get_train_valid_test_data(
+    TARGET_LABEL=TARGET_LABEL,
+)
 train_data_full
+
+print("\n--- [2] 定义自定义模型 ---")
+from stage31_get_vetted_data import AgSVMModel, IntelligentNaiveBayesModel, TabPFNV2Model,TabPFNMixModel, LinearModel, TabularPredictor
 #%%
 # --- 4. 定义训练函数 ---
 
@@ -148,25 +65,67 @@ predictor_explore.fit(train_data=train_data_full,
                         num_gpus=1
                     #   time_limit=600
                         ) # 缩短时间以加速
-leaderboard_explore = predictor_explore.leaderboard(valid_data_full)
-pred_proba = predictor_explore.predict_proba(test_data)
-feature_importance = predictor_explore.feature_importance(valid_data_full)
+# leaderboard_explore = predictor_explore.leaderboard(valid_data_full)
+# pred_proba = predictor_explore.predict_proba(test_data)
+# feature_importance = predictor_explore.feature_importance(valid_data_full)
 
-#%%
-with open(project_dir/"temp/stage4/train_top10_results_summary.txt", "w") as f:
+# #%%
+# with open(project_dir/"temp/stage4/train_top10_results_summary.txt", "w") as f:
 
-    # 保存 leaderboard_explore
-    f.write("===== Leaderboard Explore =====\n")
-    f.write(leaderboard_explore.to_string(index=False))
-    f.write("\n\n")
+#     # 保存 leaderboard_explore
+#     f.write("===== Leaderboard Explore =====\n")
+#     f.write(leaderboard_explore.to_string(index=False))
+#     f.write("\n\n")
 
-    # 保存 pred_proba
-    f.write("===== Predicted Probabilities =====\n")
-    f.write(pred_proba.to_string())
-    f.write("\n\n")
+#     # 保存 pred_proba
+#     f.write("===== Predicted Probabilities =====\n")
+#     f.write(pred_proba.to_string())
+#     f.write("\n\n")
 
-    # 保存 feature_importance
-    f.write("===== Feature Importance =====\n")
-    f.write(feature_importance.to_string(index=False))
-    f.write("\n")
-#%%
+#     # 保存 feature_importance
+#     f.write("===== Feature Importance =====\n")
+#     f.write(feature_importance.to_string(index=False))
+#     f.write("\n")
+# #%%
+# pred_proba = predictor_explore.predict_proba(test_data)
+# # 1. 取出 test_df 的前两列
+# left_cols = test_df.iloc[:, :2]          # 前两列
+# # 2. 与 pred_proba 合并
+# pred_proba_result = pd.concat([left_cols, pred_proba], axis=1)
+# pred_proba_result.to_csv(project_dir / "temp/stage4/top10_proba.csv",
+#                         index=False,
+#                         encoding='utf-8')
+# feature_importance = predictor_explore.feature_importance(valid_data_full)
+# feature_importance.to_csv(project_dir / "temp/stage4/top10_feature_importance.csv",
+#                           index=True,        # 保留“特征名”作为第一列
+#                           header=True,       # 保留列名
+#                           encoding='utf-8')
+
+#%% --- 5. 定义预测和保存结果的函数 ---
+def predict_and_save_results(predictor, test_data, output_prefix):
+    # 1. 预测概率
+    pred_proba = predictor.predict_proba(test_data)
+    
+    # 2. 取出 test_data 的前两列
+    left_cols = test_data.iloc[:, :2]  # 前两列
+    
+    # 3. 与 pred_proba 合并
+    pred_proba_result = pd.concat([left_cols, pred_proba], axis=1)
+    
+    # 4. 保存预测概率
+    pred_proba_result.to_csv(project_dir / f"temp/stage4/{output_prefix}_proba.csv",
+                             index=False,
+                             encoding='utf-8')
+    
+    # 5. 保存特征重要性
+    feature_importance = predictor.feature_importance(valid_data_full)
+    feature_importance.to_csv(project_dir / f"temp/stage4/{output_prefix}_feature_importance.csv",
+                              index=True,        # 保留“特征名”作为第一列
+                              header=True,       # 保留列名
+                              encoding='utf-8')
+
+#%% --- 6. 第一次运行：使用 test1_data ---
+predict_and_save_results(predictor_explore, test1_data, "top10_last10_test1")
+
+#%% --- 7. 第二次运行：使用 test_data ---
+predict_and_save_results(predictor_explore, test_data, "top10_last10_test")

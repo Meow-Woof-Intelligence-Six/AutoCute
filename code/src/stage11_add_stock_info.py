@@ -1,9 +1,9 @@
 # ycm
 #%%
-from auto_config import project_dir
+from auto_config import project_dir, custom_data_dir
 import pandas as pd
 import joblib
-all_stock_info_df = joblib.load(project_dir / "data/additional/all_stock_info_df.joblib")
+all_stock_info_df = joblib.load(custom_data_dir / "additional/all_stock_info_df.joblib")
 # 将 上市时间 列转换为 datetime 类型
 all_stock_info_df['上市时间'] = pd.to_datetime(all_stock_info_df['上市时间'], format='%Y%m%d')
 all_stock_info_df = all_stock_info_df.convert_dtypes()

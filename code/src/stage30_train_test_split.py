@@ -14,10 +14,11 @@ warnings.filterwarnings('ignore')
 print("--- [1/3] 加载配置 ---")
 try:
     # 假设 auto_config.py 能被正确导入
-    from auto_config import project_dir, train_dates, valid_dates, test_dates
+    from auto_config import project_dir, train_dates, valid_dates, test_dates1, test_dates
     print("成功从 auto_config 加载配置。")
     print(f"训练集日期: {train_dates}")
     print(f"验证集日期: {valid_dates}")
+    print(f"测试集1日期: {test_dates1}")
     print(f"测试集日期: {test_dates}")
 except ImportError:
     # 如果无法导入，则使用备用硬编码值，并给出提示
@@ -35,6 +36,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 OUTPUT_TRAIN_PATH = OUTPUT_DIR / "train.pkl"
 OUTPUT_VALID_PATH = OUTPUT_DIR / "valid.pkl"
+OUTPUT_TEST1_PATH = OUTPUT_DIR / "test1.pkl"
 OUTPUT_TEST_PATH = OUTPUT_DIR / "test.pkl"
 
 
@@ -69,6 +71,13 @@ valid_df.to_pickle(OUTPUT_VALID_PATH)
 print(f"验证集已保存到 {OUTPUT_VALID_PATH}，共 {len(valid_df)} 行。")
 
 # 划分测试集
+# 第一步内容的测试集
+# 筛选出 valid_df 中最后一天的数据作为test1_df
+test1_df = df[(df['timestamp'] == pd.to_datetime(valid_dates[1]))]
+test1_df.to_pickle(OUTPUT_TEST1_PATH)
+print(f"验证集已保存到 {OUTPUT_TEST1_PATH}，共 {len(test1_df)} 行。")
+
+
 # 注意：测试集可能只有一天
 test_df = df[
     (df['timestamp'] >= pd.to_datetime(test_dates[0])) & 
@@ -79,4 +88,3 @@ print(f"测试集已保存到 {OUTPUT_TEST_PATH}，共 {len(test_df)} 行。")
 
 print("\n--- 数据划分流程全部完成！ ---")
 
-# %%
