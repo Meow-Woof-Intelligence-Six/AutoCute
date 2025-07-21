@@ -3,6 +3,7 @@
 **/tmp*
 **/AutogluonModels
 **/joblib_cache
+./joblib_cache
 
 # 忽略第三方库
 third_parties/flash-attention/
