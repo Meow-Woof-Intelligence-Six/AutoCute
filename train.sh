@@ -27,12 +27,18 @@ python stage31_get_vetted_data.py
 python stage35_simple_price_data.py
 
 echo "Starting Stage 4"
+
+# 优先复现
+python stage45_train_price_agts_stats.py
+
+# 其他任务
 python stage40_train_updown.py
 python stage41_train_top10.py
 python stage42_train_price_change.py
 python stage43_train_price.py
 python stage44_train_price_agts_best_quality.py
-python stage45_train_price_agts_single_best.py
-python stage45_train_price_agts_stats.py
-python stage49_infras.py
+
+# 禁止使用
+# python stage45_train_price_agts_single_best.py
+# python stage49_infras.py # 不需要跑
 

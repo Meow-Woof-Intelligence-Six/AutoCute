@@ -3,7 +3,7 @@ from stage35_simple_price_data import TARGET_LABEL, data, project_dir
 
 from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
 # model_path = project_dir / "model/stage45_train_price_agts_stats"
-model_path = project_dir / "model/stage45_train_price_agts_stats"
+model_path = project_dir / "model/stage45_train_price_agts_single_explore"
 predictor = TimeSeriesPredictor.load(model_path)
 # %%
 predictions = predictor.predict(data)

@@ -3,7 +3,8 @@ def predictions_to_competition_df(
     predictions: pd.DataFrame, test_date: str = "2025-04-28", 
     date_before_test: str = "2025-04-25",
     test_data_for_autogluon: pd.DataFrame = None,
-    model_mode: str = "price_change"
+    model_mode: str = "price_change",
+    topk: int = 10
 ) -> pd.DataFrame:
     prediction_preds = predictions.reset_index()
     only_28 = prediction_preds[prediction_preds["timestamp"] == test_date][
@@ -32,9 +33,9 @@ def predictions_to_competition_df(
         sorted_df = combine25and28.sort_values(by="涨幅", ascending=False)
     # %%
     # 提取涨幅最大的前10个item_id
-    top_10_item_ids = sorted_df["item_id"].head(10).astype(int).tolist()
+    top_10_item_ids = sorted_df["item_id"].head(topk).astype(int).tolist()
     # 提取涨幅最小的后10个item_id
-    bottom_10_item_ids = sorted_df["item_id"].tail(10).astype(int).tolist()
+    bottom_10_item_ids = sorted_df["item_id"].tail(topk).astype(int).tolist()
     # --- 创建新的DataFrame ---
     result_df = pd.DataFrame(
         {"涨幅最大股票代码": top_10_item_ids, "涨幅最小股票代码": bottom_10_item_ids}
