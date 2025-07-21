@@ -36,7 +36,9 @@ python stage40_train_updown.py
 python stage41_train_top10.py
 python stage42_train_price_change.py
 python stage43_train_price.py
-python stage44_train_price_agts_best_quality.py
+
+# 
+# python stage44_train_price_agts_best_quality.py
 
 # 禁止使用
 # python stage45_train_price_agts_single_best.py

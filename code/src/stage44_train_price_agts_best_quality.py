@@ -35,7 +35,9 @@ print("--- [1/6] 加载配置 ---")
 TARGET_LABEL = "收盘_shift"
 
 # 路径配置
-FEATURE_JSON_PATH = project_dir / "temp/stage2/feature_selection_results_vetted.json"
+FEATURE_JSON_PATH = (
+    project_dir / "temp/stage2/feature_selection_finance_results_vetted.json"
+)
 TRAIN_DATA_PATH = project_dir / "temp/stage3/train.pkl"
 VALID_DATA_PATH = project_dir / "temp/stage3/valid.pkl"
 TEST_DATA_PATH = project_dir / "temp/stage3/test.pkl"
@@ -115,31 +117,20 @@ print(
 )
 # %%
 # 对于时序来说，三个应该叠起来
-valid_data_full = pd.concat([train_data_full, valid_data_full])
-# test_data_full = pd.concat([train_data_full, valid_data_full, test_data_full])
+# valid_data_full = pd.concat([train_data_full, valid_data_full])
+test_data_full = pd.concat([train_data_full, valid_data_full, test_data_full])
 # print(f"总验证数据: {len(valid_data_full)}, 总测试数据: {len(test_data_full)}")
 
 # %%
 
 from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
 
-# train_data_ts = TimeSeriesDataFrame.from_data_frame(
-#     train_data_full,
-#     id_column='item_id',  # 假设有一个item_id列
-#     timestamp_column='timestamp',  # 假设有一个timestamp列
-# )
 validation_set_for_autogluon = TimeSeriesDataFrame.from_data_frame(
-    valid_data_full,
+    test_data_full,
     id_column="item_id",  # 假设有一个item_id列
     timestamp_column="timestamp",  # 假设有一个timestamp列
     static_features_df=all_stock_info_df,  # 添加静态特征
 )
-# test_data_for_autogluon = TimeSeriesDataFrame.from_data_frame(
-#     test_data_full,
-#     id_column='item_id',  # 假设有一个item_id列
-#     timestamp_column='timestamp',  # 假设有一个timestamp列
-#     static_features_df=all_stock_info_df,  # 添加静态特征
-# )
 
 # %%
 known_covariates_names = [
@@ -148,7 +139,7 @@ known_covariates_names = [
 known_covariates_names
 # %%
 prediction_length = 3
-custom_lags = [1, 2, 3, 4, 5, 6, 7, 14, 21, 28, 56, 84] # kaggle某个人的方案
+custom_lags = [1, 2, 3, 4, 5, 6, 7, 14, 21, 28, 56, 84]  # kaggle某个人的方案
 from autogluon.timeseries.utils.datetime import (
     get_lags_for_frequency,
     get_seasonality,
@@ -162,7 +153,8 @@ print("custom_lags: ", custom_lags)
 
 from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
 
-model_save_path = project_dir / "model/stage4/44_price_agts_best_quality"
+# model_save_path = project_dir / "model/stage4/44_price_agts_best_quality"
+model_save_path = project_dir / "model/stage4/44_price_agts_best_quality-fixval-addfin"
 model_save_path.mkdir(parents=True, exist_ok=True)
 predictor = TimeSeriesPredictor(
     prediction_length=prediction_length,
@@ -180,21 +172,16 @@ from autogluon.timeseries.models.presets import get_default_hps
 from autogluon.timeseries.configs.presets_configs import TIMESERIES_PRESETS_CONFIGS
 from auto_config import pretrained_dir
 
-predictor.fit(
-    # 不是 tuning_data = validation_set_for_autogluon,
-    refit_full=True,
-    num_val_windows=5,
-    train_data=validation_set_for_autogluon,
-    random_seed=2002,
-    # presets="best_quality",
-    hyperparameters={
+
+final_hyperparameters = (
+    {
         # 深度学习
         "TiDE": {
             "encoder_hidden_dim": 256,
             "decoder_hidden_dim": 256,
             "temporal_hidden_dim": 64,
             "num_batches_per_epoch": 100,
-            "lr": 1e-4,
+            "lr": 1e-3,
         },
         "DeepAR": {},
         "Chronos": [
@@ -249,7 +236,6 @@ predictor.fit(
                 # presets="best_quality",
                 # use_bag_holdout=True,
             ),
-            
             # "target_scaler": None, # 第一名的方案没有scaling
             # "target_scaler ": "min_max",  # 因为要tweedie
             # 'target_scaler': 'mean_abs' # 因为要稀疏
@@ -258,7 +244,7 @@ predictor.fit(
         # simple
         "Naive": {},
         "SeasonalNaive": {},  # best quality
-        "Average": {},
+        # "Average": {},
         # "SeasonalAverage": {}, # 比较垃圾
         # statistical
         "AutoETS": {},  # best quality
@@ -269,9 +255,33 @@ predictor.fit(
         # sparse data
         "NPTS": {},
         "ADIDA": {},
-        "CrostonSBA": {},
+        # "CrostonSBA": {},
         "IMAPA": {},
     },
+)
+
+explore_hyperparameters = {
+    "TemporalFusionTransformer": [
+        {
+            "ag_args": {"name_suffix": "Default"},
+        },
+        {
+            "ag_args": {"name_suffix": "FineTuned"},
+            
+        },
+    ]
+}
+from stage49_infras import auto_ag_priority
+
+predictor.fit(
+    # 不是 tuning_data = validation_set_for_autogluon,
+    refit_full=True,
+    num_val_windows=5,
+    train_data=validation_set_for_autogluon,
+    random_seed=2002,
+    # presets="best_quality",
+    # hyperparameters=explore_hyperparameters,
+    hyperparameters=auto_ag_priority(final_hyperparameters),
     time_limit=60 * 60 * 8,
     # 前期已知的比较垃圾的或者跑不通的模型
     excluded_model_types=["NPTS", "SeasonalNaive", "PatchTST"],

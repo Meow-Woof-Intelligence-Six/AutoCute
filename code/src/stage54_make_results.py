@@ -1,4 +1,3 @@
-
 # %%
 import os
 
@@ -32,7 +31,9 @@ print("--- [1/6] 加载配置 ---")
 TARGET_LABEL = "收盘_shift"
 
 # 路径配置
-FEATURE_JSON_PATH = project_dir / "temp/stage2/feature_selection_results_vetted.json"
+FEATURE_JSON_PATH = (
+    project_dir / "temp/stage2/feature_selection_finance_results_vetted.json"
+)
 TRAIN_DATA_PATH = project_dir / "temp/stage3/train.pkl"
 VALID_DATA_PATH = project_dir / "temp/stage3/valid.pkl"
 TEST_DATA_PATH = project_dir / "temp/stage3/test.pkl"
@@ -122,8 +123,8 @@ from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
 
 train_data_ts = TimeSeriesDataFrame.from_data_frame(
     train_data_full,
-    id_column='item_id',  # 假设有一个item_id列
-    timestamp_column='timestamp',  # 假设有一个timestamp列
+    id_column="item_id",  # 假设有一个item_id列
+    timestamp_column="timestamp",  # 假设有一个timestamp列
 )
 validation_set_for_autogluon = TimeSeriesDataFrame.from_data_frame(
     valid_data_full,
@@ -133,8 +134,8 @@ validation_set_for_autogluon = TimeSeriesDataFrame.from_data_frame(
 )
 test_data_for_autogluon = TimeSeriesDataFrame.from_data_frame(
     test_data_full,
-    id_column='item_id',  # 假设有一个item_id列
-    timestamp_column='timestamp',  # 假设有一个timestamp列
+    id_column="item_id",  # 假设有一个item_id列
+    timestamp_column="timestamp",  # 假设有一个timestamp列
     static_features_df=all_stock_info_df,  # 添加静态特征
 )
 
@@ -143,27 +144,35 @@ known_covariates_names = [
     col for col in final_cols if "timestamp" in col and col != "timestamp"
 ]
 known_covariates_names
-#%%
+# %%
 import joblib
+
 time_features_maker_path = project_dir / "temp/stage2/time_features_maker.pkl"
 
-time_features_maker = joblib.load(
-    time_features_maker_path
-)
+time_features_maker = joblib.load(time_features_maker_path)
 date_features = time_features_maker["date_features"]
 cyclical_encoder = time_features_maker["cyclical_encoder"]
 
-#%%
+# %%
 from auto_config import project_dir, model_dir
-model_path = project_dir/"code/src/AutogluonModels/ag-20250720_072646"
+
+# model_path = project_dir/"code/src/AutogluonModels/ag-20250720_072646"
+# model_path = project_dir / "model/stage4/44_price_agts_best_quality"
+model_path = project_dir / "model/stage4/44_price_agts_best_quality-fixval-addfin"
 from autogluon.timeseries import TimeSeriesPredictor
+
 # Load the predictor from the specified path
 predictor = TimeSeriesPredictor.load(model_path)
 predictor.leaderboard()
 # %%
+test_data_for_autogluon1 = test_data_for_autogluon[test_data_for_autogluon.index.get_level_values('timestamp') < test_data_for_autogluon.index.get_level_values('timestamp').max()]
+
 future_data = predictor.make_future_data_frame(test_data_for_autogluon)
 future_data
-#%%
+
+future_data1 = predictor.make_future_data_frame(test_data_for_autogluon1)
+future_data1
+# %%
 df158 = pd.read_pickle(project_dir / "temp/lag158_finance.pkl")
 # 取 df 158 最后 future_data 的行数
 df158 = df158.tail(len(future_data)).reset_index(drop=True)
@@ -172,70 +181,76 @@ for col in future_data.columns:
     if col in df158.columns:
         df158[col] = future_data[col]
 # df158
-#%%
+
+df1581 = pd.read_pickle(project_dir / "temp/lag158_finance.pkl")
+# 取 df 158 最后 future_data 的行数
+df1581 = df1581.tail(len(future_data1)).reset_index(drop=True)
+# 用 future_data 的数据覆盖 df158 的数据
+for col in future_data1.columns:
+    if col in df1581.columns:
+        df1581[col] = future_data1[col]
+
+# %%
 
 # 添加时间特征
 future_data_real = date_features.transform(df158)
 # 添加周期性特征
 future_data_real = cyclical_encoder.transform(future_data_real)
-future_data_real = future_data_real[future_data.columns.to_list()+known_covariates_names]
+future_data_real = future_data_real[
+    future_data.columns.to_list() + known_covariates_names
+]
 # future_data_real
+
+future_data_real1 = date_features.transform(df1581)
+# 添加周期性特征
+future_data_real1 = cyclical_encoder.transform(future_data_real1)
+future_data_real1 = future_data_real1[
+    future_data1.columns.to_list() + known_covariates_names
+]
 # %%
-predictions = predictor.predict(test_data_for_autogluon, 
-    known_covariates=future_data_real)
+predictions = predictor.predict(
+    test_data_for_autogluon, known_covariates=future_data_real
+)
+
+predictions1 = predictor.predict(
+    test_data_for_autogluon1, known_covariates=future_data_real1
+)
+
+#%%
+from auto_config import test1_dates, test_dates
+import pandas as pd
 
 # %%
-import joblib
-# 保存预测结果
-predictions_path = model_dir / "test_predictions.pkl"
-#%%
-joblib.dump(predictions, predictions_path)
-print(f"预测结果已保存到: {predictions_path}")
-
-#%%
 predictions = joblib.load(predictions_path)
+from stage59 import predictions_to_competition_df
 
-prediction_preds = predictions.reset_index()
-only_28 = prediction_preds[prediction_preds["timestamp"]=='2025-04-28'][['item_id', 'mean']]
-only_28
-#%%
+
+from auto_config import test1_dates, test_dates
+from stage59 import predictions_to_competition_df
+from datetime import datetime, timedelta
+real_test_date = datetime.strftime(datetime.strptime(test_dates[0], '%Y-%m-%d') + timedelta(days=3), '%Y-%m-%d')
+real_test_date
 
 model_mode = "price"
+result_df = predictions_to_competition_df(
+    predictions,
+    test_date = real_test_date,
+    date_before_test=test_dates[0],
+    test_data_for_autogluon=test_data_for_autogluon,
+    model_mode=model_mode
+)
 
 
-if model_mode == "price_change":
-    sorted_df = only_28.sort_values(by='mean', ascending=False) 
-elif model_mode == "-price_change":
-    sorted_df = only_28.sort_values(by='mean', ascending=True) 
-else:
-    # prediction_preds
-    val_true = test_data_for_autogluon.reset_index()
-    only_25 = val_true[val_true["timestamp"]=='2025-04-25'][['item_id', '收盘']]
-    # only_25
 
-    combine25and28 = pd.merge(only_25, only_28,  on="item_id")
-    combine25and28['涨幅'] = (combine25and28['mean']- combine25and28['收盘'] ) / combine25and28['收盘']*100
-    # combine25and28
-
-    # --- 排序并提取前10和后10的item_id ---
-    # 按涨幅排序（降序）
-    sorted_df = combine25and28.sort_values(by='涨幅', ascending=False)
-#%%
-sorted_df
-#%%
 model_name = predictor.path.split("/")[-1]
-model_name
+
+result_df.to_csv(
+    project_dir / f"output/result-{model_mode}-{model_name}-test.csv", index=False
+)
+
 #%%
-# 提取涨幅最大的前10个item_id
-top_10_item_ids = sorted_df['item_id'].head(10).astype(int).tolist()
 
-# 提取涨幅最小的后10个item_id
-bottom_10_item_ids = sorted_df['item_id'].tail(10).astype(int).tolist()
 
-# --- 创建新的DataFrame ---
-result_df = pd.DataFrame({
-    '涨幅最大股票代码': top_10_item_ids,
-    '涨幅最小股票代码': bottom_10_item_ids
-})
-result_df.to_csv(project_dir/f'output/result-{model_mode}-{model_name}.csv', index=False)
+
+
 # %%

@@ -2,11 +2,6 @@ import numpy as np
 import pandas as pd
 import warnings
 
-# 确保 wnb 已经安装: pip install wnb
-try:
-    from wnb import GeneralNB, Distribution as D
-except ImportError:
-    raise ImportError("请先安装 'wnb' 库: pip install wnb")
 
 # AutoGluon 核心类与特征生成器
 from autogluon.core.models import AbstractModel
@@ -107,6 +102,7 @@ class IntelligentNaiveBayesModel(AbstractModel):
         模型训练的核心方法。
         此方法将分析特征类型，配置并训练 GeneralNB 模型。
         """
+        from wnb import GeneralNB, Distribution as D
         if self.problem_type not in ['binary', 'multiclass']:
             raise ValueError("朴素贝叶斯模型目前仅支持 'binary' 或 'multiclass' 分类任务。")
 

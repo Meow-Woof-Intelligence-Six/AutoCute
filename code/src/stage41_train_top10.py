@@ -44,17 +44,14 @@ from auto_config import project_dir
 from autogluon.tabular.configs.hyperparameter_configs import hyperparameter_config_dict
 
 autogluon_models = {
-    "NN_TORCH": {},
-    "NN_TORCH": {"num_epochs": 5},
+    "NN_TORCH": [{"num_epochs": 5},{},], 
     "XT": [
         {
             "min_samples_leaf": 1,
             "max_leaf_nodes": 15000,
             "max_features": 0.5,
             "ag_args": {"name_suffix": "_r19", "priority": 20},
-        }
-    ],
-    "XT": [
+        }, 
         {
             "criterion": "gini",
             "ag_args": {
@@ -83,8 +80,7 @@ autogluon_models = {
             "ag_args": {"name_suffix": "_r19", "priority": 20},
         },
     ],
-    "XGB": {"n_estimators": 10},
-    "XGB": {},
+    "XGB": [{"n_estimators": 10}, {}]
 }
 
 # --- 修正后的模型字典 ---
@@ -94,55 +90,27 @@ initial_models = {
     **autogluon_models,
 }
 
+fast  = {
+    "GBM":{}
+}
+
 predictor_explore = TabularPredictor(
+    sample_weight = "balance_weight", 
     label=TARGET_LABEL,
     # problem_type=REGRESSION,
     eval_metric="roc_auc",
     path=str(MODEL_OUTPUT_BASE_PATH / "top10_classfication_explore"),
 )
+from stage49_infras import auto_ag_priority
 predictor_explore.fit(
     train_data=train_data_full,
     tuning_data=valid_data_full,
-    hyperparameters=initial_models,
+    hyperparameters=auto_ag_priority(initial_models),
+    # hyperparameters=auto_ag_priority(fast),
     num_gpus=1,
-    #   time_limit=600
-)  # 缩短时间以加速
-# leaderboard_explore = predictor_explore.leaderboard(valid_data_full)
-# pred_proba = predictor_explore.predict_proba(test_data)
-# feature_importance = predictor_explore.feature_importance(valid_data_full)
-
-# #%%
-# with open(project_dir/"temp/stage4/train_top10_results_summary.txt", "w") as f:
-
-#     # 保存 leaderboard_explore
-#     f.write("===== Leaderboard Explore =====\n")
-#     f.write(leaderboard_explore.to_string(index=False))
-#     f.write("\n\n")
-
-#     # 保存 pred_proba
-#     f.write("===== Predicted Probabilities =====\n")
-#     f.write(pred_proba.to_string())
-#     f.write("\n\n")
-
-#     # 保存 feature_importance
-#     f.write("===== Feature Importance =====\n")
-#     f.write(feature_importance.to_string(index=False))
-#     f.write("\n")
-# #%%
-# pred_proba = predictor_explore.predict_proba(test_data)
-# # 1. 取出 test_df 的前两列
-# left_cols = test_df.iloc[:, :2]          # 前两列
-# # 2. 与 pred_proba 合并
-# pred_proba_result = pd.concat([left_cols, pred_proba], axis=1)
-# pred_proba_result.to_csv(project_dir / "temp/stage4/top10_proba.csv",
-#                         index=False,
-#                         encoding='utf-8')
-# feature_importance = predictor_explore.feature_importance(valid_data_full)
-# feature_importance.to_csv(project_dir / "temp/stage4/top10_feature_importance.csv",
-#                           index=True,        # 保留“特征名”作为第一列
-#                           header=True,       # 保留列名
-#                           encoding='utf-8')
-
+    time_limit= 2*60*60, 
+    
+)  
 
 # %% --- 5. 定义预测和保存结果的函数 ---
 def predict_and_save_results(predictor, test_data, test_df, output_prefix, save_importance=False):
