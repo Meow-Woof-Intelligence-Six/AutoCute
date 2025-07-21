@@ -62,7 +62,59 @@
 
 
 # 环境配置
-注明 python、pytorch 等依赖的版本
+
+注意，由于AutoGluon的Docker镜像过大，虽然如下的DockerFile可以完美构建我们的镜像，但是我们决定在init.sh中安装相关依赖！
+
+```dockerfile
+# 1. 选择合适的基础镜像
+FROM autogluon/autogluon:1.3.1-cuda12.4-jupyter-ubuntu22.04-py3.11
+
+# 2. 设置工作目录
+WORKDIR /app
+
+# 3. 复制文件到容器
+COPY requirements.txt /app/
+COPY third_parties/ /app/third_parties/
+
+# 4. 安装 Python 依赖
+# ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+# RUN pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+
+
+# thundersvm
+# cmake -DCMAKE_C_COMPILER=gcc-11 -DCMAKE_CXX_COMPILER=g++-11 ..
+# cd ../python
+# python setup.py install
+# sudo apt-get install libnuma-dev
+
+# 安装 flash-attn
+
+
+COPY ./code/ /app/code/
+# COPY ./model/ /app/model/
+COPY ./init.sh /app/init.sh
+COPY ./train.sh /app/train.sh
+COPY ./test.sh /app/test.sh
+COPY ./readme.pdf /app/readme.pdf
+
+EXPOSE 8888
+ENV JUPYTER_WORKSPACE_NAME=app
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--allow-root", "--no-browser", "--port=8888"]
+```
+
+由于比赛官方给的nvidia镜像太大，下载太慢，我们未能构建成功。
+
+实际上我们的python代码非常鲁棒，在3.10\3.11\3.12的conda环境下，都能正确在8GB显存下跑通。
+
+
+
+我们决定使用python 3.10 slim ，在init.sh中动态安装依赖。
+
+
+
+
 
 ## 数据
 使用了 akshare 公开数据，数据获取链接为(https://github.com/akfamily/akshare)，在训练以上模型时均使用

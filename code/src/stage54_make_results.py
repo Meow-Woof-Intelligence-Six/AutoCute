@@ -37,7 +37,7 @@ FEATURE_JSON_PATH = (
 TRAIN_DATA_PATH = project_dir / "temp/stage3/train.pkl"
 VALID_DATA_PATH = project_dir / "temp/stage3/valid.pkl"
 TEST_DATA_PATH = project_dir / "temp/stage3/test.pkl"
-MODEL_OUTPUT_BASE_PATH = project_dir / "models/stage4"
+MODEL_OUTPUT_BASE_PATH = project_dir / "model/stage4"
 MODEL_OUTPUT_BASE_PATH.mkdir(parents=True, exist_ok=True)
 
 # 加载特征选择JSON
