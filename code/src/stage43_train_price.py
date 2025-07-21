@@ -137,14 +137,14 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
                 "ag_args": {"name_suffix": "ZeroShot"},
                 **tabpdn_path_dict,
             }, 
-            {
-                "ag_args": {"name_suffix": "FineTunedv1"},
-                **tabpdn_path_dict,
-                "n_ensembles": 1,
-                "max_epochs": 30,
-                "ag.sample_rows_val": 5000,  # Beyond 5k val rows fine-tuning becomes very slow
-                "ag.max_rows": 50000,  # Beyond 50k rows, the time taken is longer than most users would like (hours), while the model is very weak at this size
-            }, 
+            # {
+            #     "ag_args": {"name_suffix": "FineTunedv1"},
+            #     **tabpdn_path_dict,
+            #     "n_ensembles": 1,
+            #     "max_epochs": 30,
+            #     "ag.sample_rows_val": 5000,  # Beyond 5k val rows fine-tuning becomes very slow
+            #     "ag.max_rows": 50000,  # Beyond 50k rows, the time taken is longer than most users would like (hours), while the model is very weak at this size
+            # }, 
         ],
         "XT": [
             {
@@ -261,10 +261,10 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
         ],
         "XGB": {},
     }
+    fast = {
+        "GBM": {}
+    }
     from stage49_infras import auto_ag_priority
-
-    final_hyperparameters = auto_ag_priority(final_hyperparameters)
-
     predictor_explore = TabularPredictor(
         label=TARGET_LABEL,
         problem_type=REGRESSION,
@@ -276,7 +276,8 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
         train_data=train_data,
         tuning_data=valid_data,
         # hyperparameters=initial_models,
-        hyperparameters=final_hyperparameters,
+        hyperparameters=auto_ag_priority(final_hyperparameters),
+        # hyperparameters=fast,
         # raise_on_no_models_fitted=True
         #   num_gpus=*1
         time_limit=8 * 60 * 60,  # 8小时
@@ -293,7 +294,7 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
 train_ag = TabularDataset(train_data_full)
 valid_ag = TabularDataset(valid_data_full)
 
-predictor_explore = run_training_pipeline(train_ag, valid_ag, model_path_suffix="full_train")
+predictor_explore = run_training_pipeline(train_ag, valid_ag, model_path_suffix=f"{TARGET_LABEL}_full_train")
 
 def predict_and_save_results(predictor, test_data, test_df, output_prefix, save_importance=False):
     test_ag = TabularDataset(test_data)
