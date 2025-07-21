@@ -1,16 +1,29 @@
-model/*
-models/*
-*/tmp*
-*/AutogluonModels
-*/joblib_cache
+./model/*
+./models/*
+**/tmp*
+**/AutogluonModels
+**/joblib_cache
 
-# 
-third_parties/flash-attention
-third_parties/thundersvm
-third_parties/wnb
-third_parties/flash_attn-*
+# 忽略第三方库
+third_parties/flash-attention/
+third_parties/thundersvm/
+third_parties/wnb/
+third_parties/flash_attn-*/
+
+# 确保使用相对路径匹配特定目录
+
+./third_parties/flash-attention/
+./third_parties/thundersvm/
+./third_parties/wnb/
+./third_parties/flash_attn-*/
 
 
+# 如果文件在嵌套目录中，使用双星号通配符
+**/*.model
+**/*.bin
+**/*.pt
+**/*.pth
+**/*.ckpt
 
 # 比赛方填充，不能改
 data

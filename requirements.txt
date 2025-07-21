@@ -10,7 +10,8 @@ pandas
 # tabpfn
 -e ./third_parties/TabPFN
 -e ./third_parties/tabpfn-extensions
--e ./third_parties/wnb
+
+# -e ./third_parties/wnb
 
 
 # 版本控制

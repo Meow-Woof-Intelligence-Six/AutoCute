@@ -1,2 +1,13 @@
-# 执行推理代码
-python ./code/src/test.py
+#!/bin/bash
+cd /app/code/src
+echo "Starting Stage 5"
+python stage51_make_top10_updown_results.py
+python stage52_predict_price_change.py
+python stage54_make_results.py
+python stage55_make_simple.py
+python stage59.py
+
+echo "Starting Stage 6"
+python stage60_evaluator.py
+python stage61_evaluator_args.py
+python stage62_super_ensemble.py

@@ -1,9 +1,10 @@
+dev
 model/*
 models/*
 tmp*
 tmp
 temp
-AutogluonModels
+AutogluonModels/
 data
 joblib_cache
 # Byte-compiled / optimized / DLL files
