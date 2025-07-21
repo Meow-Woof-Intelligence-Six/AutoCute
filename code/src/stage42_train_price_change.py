@@ -131,15 +131,20 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
         
     }
 
+    fast = {
+        "GBM":{}
+    }
     
     predictor_explore = TabularPredictor(label=TARGET_LABEL,
                                           problem_type=REGRESSION,
                                             eval_metric=EVAL_METRIC,
                                               path=(model_path / "phase3_explore").as_posix())
+    from stage49_infras import auto_ag_priority
     predictor_explore.fit(train_data=train_data, 
                           tuning_data=valid_data,
-                            hyperparameters=initial_models,
-                            # hyperparameters=final_hyperparameters,
+                            # hyperparameters=auto_ag_priority(initial_models),
+                            hyperparameters=auto_ag_priority(final_hyperparameters),
+                            # hyperparameters=fast,
                             # raise_on_no_models_fitted=True
                         #   num_gpus=*1
                           time_limit=8 * 60 * 60,  # 8小时
@@ -156,7 +161,7 @@ def run_training_pipeline(train_data, valid_data, model_path_suffix=""):
 train_ag = TabularDataset(train_data_full)
 valid_ag = TabularDataset(valid_data_full)
 
-predictor_explore = run_training_pipeline(train_ag, valid_ag, model_path_suffix="full_train")
+predictor_explore = run_training_pipeline(train_ag, valid_ag, model_path_suffix="{TARGET_LABEL}_full_train")
 
 def predict_and_save_results(predictor, test_data, test_df, output_prefix, save_importance=False):
     test_ag = TabularDataset(test_data)
